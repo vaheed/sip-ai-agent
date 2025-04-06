@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  openai-voice-agent:
+    build: .
+    container_name: openai-voice-agent
+    restart: always
+    environment:
+      SIP_DOMAIN: ${SIP_DOMAIN}
+      SIP_USER: ${SIP_USER}
+      SIP_PASS: ${SIP_PASS}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AGENT_ID: ${AGENT_ID}
+    ports:
+      - "5060:5060/udp"
+    volumes:
+      - ./app:/app
+    working_dir: /app
+    command: ["python3", "agent.py"]
