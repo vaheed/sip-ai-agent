@@ -48,6 +48,49 @@ Make sure the SIP client registers and waits for incoming calls.
 
 Call the extension you configured in FreePBX and start a conversation with your AI assistant 🎙️
 
+## 📋 Changelog
+
+### v1.0.0 (Initial Release)
+- Basic SIP client implementation
+- OpenAI Voice API integration
+- Docker containerization
+
+### v1.1.0
+- Multi-stage Docker build for optimized image size
+- Improved error handling and logging
+- Added port exposures for SIP and RTP
+
+### v1.2.0
+- Added monitoring interface
+- Enhanced call state management
+- Token usage tracking
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how you can help improve this project:
+
+1. **Fork the repository**
+2. **Create a feature branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Commit your changes**:
+   ```bash
+   git commit -m 'Add some feature'
+   ```
+4. **Push to the branch**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+5. **Open a Pull Request**
+
+### Coding Standards
+- Follow PEP 8 style guide for Python code
+- Document new functions and classes
+- Add appropriate error handling
+- Write tests for new features when possible
+
 ---
 
 Made with ❤️ for real-time AI voice interaction.
+
