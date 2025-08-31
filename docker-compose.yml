@@ -1,0 +1,15 @@
+services:
+  sip-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sip-ai-agent
+    restart: unless-stopped
+    volumes:
+      - ./app:/app
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+      - "5060:5060/udp"
+      - "16000-16100:16000-16100/udp"
