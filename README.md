@@ -1,3 +1,5 @@
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 # OpenAI SIP Voice Agent
 
 ## Overview
@@ -177,3 +179,7 @@ See `CHANGELOG.md` for a history of releases and notable changes.
 ---
 
 Made with ❤️ to explore the future of real‑time AI voice interactions.
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
