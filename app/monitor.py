@@ -2,7 +2,12 @@
 import os
 import time
 import threading
+import asyncio
 from flask import Flask, jsonify, render_template_string, request
+from config import get_settings
+from logging_config import get_logger, with_correlation_id, generate_correlation_id
+from metrics import get_metrics
+from health import get_health_monitor, HealthStatus
 
 def _env_path():
     """
@@ -71,13 +76,10 @@ def save_config(new_config: dict) -> None:
 
 class Monitor:
     """
-    Monitor tracks SIP registration state, active calls, token usage and logs.
+    Enhanced monitor with comprehensive observability, health checks, and metrics.
 
-    It also exposes a simple HTTP dashboard for real‑time observation and
-    configuration. The dashboard supports viewing and updating key settings
-    stored in the .env file as well as inspecting call history. To use the
-    configuration features, ensure the Docker container has permissions to
-    write the `.env` file located in the repository root.
+    This monitor tracks SIP registration state, active calls, token usage, logs,
+    and provides health monitoring with structured logging and Prometheus metrics.
     """
 
     # Keys presented on the configuration dashboard. Order matters for
@@ -85,17 +87,24 @@ class Monitor:
     # variables that should be editable through the UI.
     CONFIG_KEYS = [
         'SIP_DOMAIN', 'SIP_USER', 'SIP_PASS', 'OPENAI_API_KEY', 'AGENT_ID',
-        'OPENAI_MODE', 'OPENAI_MODEL', 'OPENAI_VOICE', 'OPENAI_TEMPERATURE', 'SYSTEM_PROMPT'
+        'OPENAI_MODE', 'OPENAI_MODEL', 'OPENAI_VOICE', 'OPENAI_TEMPERATURE', 'SYSTEM_PROMPT',
+        'SIP_SRTP_ENABLED', 'SIP_JITTER_BUFFER_SIZE', 'AUDIO_BACKPRESSURE_THRESHOLD',
+        'SIP_REGISTRATION_RETRY_MAX', 'SIP_REGISTRATION_RETRY_BACKOFF'
     ]
 
     def __init__(self):
+        self.settings = get_settings()
+        self.logger = get_logger("monitor")
+        self.metrics = get_metrics()
+        self.health_monitor = get_health_monitor()
+        
         self.app = Flask(__name__)
         self.sip_registered = False
         self.active_calls = []
         self.call_history = []  # list of dicts with call_id, start, end
         self.api_tokens_used = 0
         self.logs = []
-        self.max_logs = 100
+        self.max_logs = self.settings.monitor_max_logs
         self.setup_routes()
         
     def setup_routes(self):
@@ -320,17 +329,85 @@ class Monitor:
             return jsonify({
                 'logs': self.logs
             })
+        
+        @self.app.route('/healthz')
+        async def health_check():
+            """Health check endpoint for Kubernetes and monitoring systems."""
+            try:
+                report = await self.health_monitor.run_health_checks()
+                
+                # Return appropriate HTTP status code based on health
+                status_code = 200
+                if report.overall_status == HealthStatus.CRITICAL:
+                    status_code = 503
+                elif report.overall_status == HealthStatus.UNHEALTHY:
+                    status_code = 503
+                elif report.overall_status == HealthStatus.DEGRADED:
+                    status_code = 200  # Degraded but still operational
+                
+                return jsonify({
+                    'status': report.overall_status.value,
+                    'timestamp': report.timestamp,
+                    'uptime_seconds': report.uptime_seconds,
+                    'checks': [
+                        {
+                            'name': check.name,
+                            'status': check.status.value,
+                            'message': check.message,
+                            'duration_ms': check.duration_ms
+                        }
+                        for check in report.checks
+                    ]
+                }), status_code
+                
+            except Exception as e:
+                self.logger.error("Health check failed", error=str(e))
+                return jsonify({
+                    'status': 'critical',
+                    'error': str(e),
+                    'timestamp': time.time()
+                }), 503
+        
+        @self.app.route('/metrics')
+        def metrics_endpoint():
+            """Prometheus metrics endpoint."""
+            if not self.settings.metrics_enabled:
+                return "Metrics disabled", 404
+            
+            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+            from flask import Response
+            
+            data = generate_latest()
+            return Response(data, mimetype=CONTENT_TYPE_LATEST)
+        
+        @self.app.route('/api/metrics/summary')
+        def metrics_summary():
+            """Get a summary of key metrics."""
+            return jsonify({
+                'active_calls': self.metrics.get_active_calls_count(),
+                'sip_registered': self.sip_registered,
+                'api_tokens_used': self.api_tokens_used,
+                'uptime_seconds': self.health_monitor.get_uptime(),
+                'system_metrics': self.health_monitor.get_system_metrics()
+            })
     
     def update_registration(self, status):
         self.sip_registered = status
+        self.metrics.update_sip_registration_status(
+            self.settings.sip_domain, self.settings.sip_user, status
+        )
         self.add_log(f"SIP Registration: {'Registered' if status else 'Not Registered'}")
+        self.logger.info("SIP registration status updated", registered=status)
     
     def add_call(self, call_id):
+        correlation_id = generate_correlation_id()
         if call_id not in self.active_calls:
             self.active_calls.append(call_id)
             # Record call start time
             self.call_history.append({'call_id': call_id, 'start': time.time(), 'end': None})
             self.add_log(f"New call: {call_id}")
+            self.logger.info("New call added", call_id=call_id, correlation_id=correlation_id)
+            self.metrics.record_call_start(str(call_id))
     
     def remove_call(self, call_id):
         if call_id in self.active_calls:
@@ -341,10 +418,13 @@ class Monitor:
                     item['end'] = time.time()
                     break
             self.add_log(f"Call ended: {call_id}")
+            self.logger.info("Call removed", call_id=call_id)
+            self.metrics.record_call_end(str(call_id))
     
     def update_tokens(self, tokens):
         self.api_tokens_used += tokens
         self.add_log(f"API tokens used: +{tokens} (Total: {self.api_tokens_used})")
+        self.logger.info("Token usage updated", tokens_added=tokens, total_tokens=self.api_tokens_used)
     
     def add_log(self, message):
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -357,16 +437,27 @@ class Monitor:
             self.logs = self.logs[-self.max_logs:]
     
     def start(self):
+        # Start metrics server if enabled
+        if self.settings.metrics_enabled:
+            self.metrics.start_metrics_server()
+        
         # Start Flask in a separate thread
         threading.Thread(target=self._run_server, daemon=True).start()
-        self.add_log("Monitoring server started on port 8080")
+        self.add_log(f"Monitoring server started on port {self.settings.monitor_port}")
+        self.logger.info("Monitor started", 
+                        port=self.settings.monitor_port,
+                        metrics_enabled=self.settings.metrics_enabled,
+                        metrics_port=self.settings.metrics_port if self.settings.metrics_enabled else None)
     
     def _run_server(self):
         # Explicitly disable Flask's logging to keep console output clean
         import logging as _logging
         log = _logging.getLogger('werkzeug')
         log.setLevel(_logging.ERROR)
-        self.app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+        self.app.run(host=self.settings.monitor_host, 
+                    port=self.settings.monitor_port, 
+                    debug=self.settings.debug, 
+                    use_reloader=False)
 
 # Singleton instance
 monitor = Monitor()

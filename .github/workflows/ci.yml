@@ -1,0 +1,217 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    name: Lint and Type Check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run black (code formatting)
+      run: |
+        black --check --diff .
+    
+    - name: Run isort (import sorting)
+      run: |
+        isort --check-only --diff .
+    
+    - name: Run flake8 (linting)
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run mypy (type checking)
+      run: |
+        mypy app/ --ignore-missing-imports --no-strict-optional
+
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+    
+    services:
+      # We don't actually need Redis or PostgreSQL for these tests,
+      # but this shows how you could add service dependencies
+      # redis:
+      #   image: redis:latest
+      #   ports:
+      #     - 6379:6379
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run tests with pytest
+      run: |
+        pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  build-and-test-docker:
+    runs-on: ubuntu-latest
+    name: Build and Test Docker Image
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t sip-ai-agent:test .
+    
+    - name: Test Docker image
+      run: |
+        # Test that the container starts without errors
+        docker run --rm sip-ai-agent:test python -c "print('Docker image test passed')"
+    
+    - name: Test configuration validation
+      run: |
+        # Test configuration validation
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "
+        import sys
+        sys.path.append('/app')
+        from config import Settings
+        try:
+            settings = Settings()
+            print('Configuration validation passed')
+        except Exception as e:
+            print(f'Configuration validation failed: {e}')
+            sys.exit(1)
+        "
+
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Run bandit security scan
+      run: |
+        bandit -r app/ -f json -o bandit-report.json || true
+        bandit -r app/
+    
+    - name: Run safety check
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check
+
+  integration-test:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    needs: [lint-and-typecheck, test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run integration tests
+      run: |
+        pytest tests/ -v -m integration --tb=short
+      env:
+        SIP_DOMAIN: test.example.com
+        SIP_USER: 1001
+        SIP_PASS: testpass
+        OPENAI_API_KEY: sk-test-key
+        AGENT_ID: va-test123
+        DEBUG: true
+        METRICS_ENABLED: false
+        STRUCTURED_LOGGING: false
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    needs: [lint-and-typecheck, test, build-and-test-docker, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push Docker image
+      run: |
+        docker build -t vaheed/sip-ai-agent:latest .
+        docker build -t vaheed/sip-ai-agent:${{ github.sha }} .
+        docker push vaheed/sip-ai-agent:latest
+        docker push vaheed/sip-ai-agent:${{ github.sha }}
+    
+    - name: Update deployment (example)
+      run: |
+        echo "Deployment completed for commit ${{ github.sha }}"
+        # Add your deployment logic here

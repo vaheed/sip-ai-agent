@@ -7,9 +7,24 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
+      - ./logs:/app/logs  # Mount logs directory
     env_file:
       - .env
     ports:
-      - "8080:8080"
-      - "5060:5060/udp"
-      - "16000-16100:16000-16100/udp"
+      - "8080:8080"      # Monitoring dashboard
+      - "9090:9090"      # Prometheus metrics
+      - "5060:5060/udp"  # SIP signaling
+      - "16000-16100:16000-16100/udp"  # RTP media
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

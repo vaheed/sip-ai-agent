@@ -1,0 +1,178 @@
+# SIP AI Agent - Cursor Rules
+
+## Project Overview
+This is a SIP AI Agent that integrates with OpenAI's API for real-time voice interactions. The project uses Python, PJSIP for SIP protocol handling, and provides both legacy and realtime OpenAI API support.
+
+## Architecture
+- **Main Agent**: `app/agent_new.py` - Enhanced main application with comprehensive error handling
+- **Configuration**: `app/config.py` - Typed configuration using Pydantic
+- **SIP Client**: `app/sip_client.py` - Enhanced SIP client with reconnection and NAT traversal
+- **OpenAI Agent**: `app/openai_agent.py` - OpenAI API integration with realtime support
+- **Monitoring**: `app/monitor.py` - Enhanced monitoring with health checks and metrics
+- **Metrics**: `app/metrics.py` - Prometheus metrics collection
+- **Logging**: `app/logging_config.py` - Structured logging with correlation IDs
+- **Health**: `app/health.py` - Health monitoring and diagnostics
+
+## Code Style & Standards
+- Use Python 3.9+ features
+- Follow PEP 8 with Black formatting (line length 88)
+- Use type hints for all function parameters and return values
+- Use structured logging with correlation IDs
+- Write comprehensive docstrings for all public functions
+- Use async/await for I/O operations
+- Handle all exceptions gracefully with proper logging
+
+## Dependencies
+- **Core**: pjsua2, pyaudio, pydub, websockets
+- **OpenAI**: openai>=1.0.0
+- **Configuration**: pydantic, pydantic-settings, python-dotenv
+- **Monitoring**: flask, structlog, prometheus-client
+- **Testing**: pytest, pytest-asyncio, pytest-mock, httpx
+- **Development**: black, isort, mypy, flake8, pre-commit
+
+## Configuration
+All configuration is handled through Pydantic settings in `app/config.py`. Environment variables are loaded from `.env` file with validation.
+
+Key configuration categories:
+- SIP settings (domain, user, password, advanced options)
+- Audio settings (sample rate, channels, frame duration)
+- OpenAI settings (API key, mode, model, voice)
+- Monitoring settings (host, port, log levels)
+- Observability settings (metrics, structured logging)
+
+## Testing
+- Write unit tests for all modules in `tests/`
+- Use pytest fixtures for common test objects
+- Mock external dependencies (SIP, OpenAI, WebSocket)
+- Test error conditions and edge cases
+- Use async test fixtures for async code
+- Maintain >80% code coverage
+
+## SIP Protocol
+- Uses PJSIP library for SIP protocol handling
+- Supports registration with automatic reconnection
+- Handles incoming calls with proper state management
+- Supports multiple codecs (PCMU, PCMA, G.722, L16)
+- Includes NAT traversal support (STUN/TURN/ICE)
+- Supports SRTP encryption when enabled
+
+## Audio Pipeline
+- 16-bit PCM at 16kHz sample rate
+- 20ms frame duration (320 samples per frame)
+- Backpressure handling to prevent queue overflow
+- Graceful shutdown with proper cleanup
+- Audio dropouts are tracked and logged
+
+## OpenAI Integration
+- Supports both legacy and realtime APIs
+- Realtime API requires proper session configuration
+- Voice validation for realtime mode
+- Token usage tracking and metrics
+- WebSocket connection management with error handling
+
+## Monitoring & Observability
+- Structured JSON logging with correlation IDs
+- Prometheus metrics for all key operations
+- Health checks for all components
+- Real-time dashboard at `/dashboard`
+- Health endpoint at `/healthz`
+- Metrics endpoint at `/metrics`
+
+## Error Handling
+- All operations should be wrapped in try-catch blocks
+- Log errors with appropriate severity levels
+- Use correlation IDs to trace errors across components
+- Implement retry logic with exponential backoff
+- Graceful degradation when services are unavailable
+
+## Security
+- Never log sensitive information (passwords, API keys)
+- Validate all input parameters
+- Use secure defaults for all configurations
+- Regular security scanning with bandit and safety
+
+## Development Workflow
+1. Use pre-commit hooks for code quality
+2. Run tests before committing: `make test`
+3. Check code quality: `make check-all`
+4. Validate configuration: `make validate-config`
+5. Test Docker build: `make docker-test`
+
+## Common Patterns
+
+### Async Function Structure
+```python
+async def async_function(param: str) -> bool:
+    """Async function with proper error handling."""
+    try:
+        # Implementation
+        return True
+    except Exception as e:
+        logger.error("Error in async_function", 
+                    param=param, error=str(e))
+        return False
+```
+
+### Structured Logging
+```python
+logger.info("Operation completed", 
+           correlation_id=correlation_id,
+           operation="operation_name",
+           duration=duration)
+```
+
+### Configuration Access
+```python
+from config import get_settings
+settings = get_settings()
+# Use settings.some_setting
+```
+
+### Metrics Recording
+```python
+from metrics import get_metrics
+metrics = get_metrics()
+metrics.record_some_metric(value)
+```
+
+### Health Checks
+```python
+from health import get_health_monitor
+monitor = get_health_monitor()
+report = await monitor.run_health_checks()
+```
+
+## File Organization
+- Keep related functionality in the same module
+- Use clear, descriptive names for files and functions
+- Separate concerns (SIP, OpenAI, monitoring, etc.)
+- Import only what you need
+- Use absolute imports from the app package
+
+## Performance Considerations
+- Use async I/O for all network operations
+- Implement proper backpressure for audio queues
+- Cache frequently accessed configuration values
+- Use connection pooling where applicable
+- Monitor memory usage and implement cleanup
+
+## Deployment
+- Docker container with multi-stage build
+- Health checks for container orchestration
+- Environment variable configuration
+- Proper signal handling for graceful shutdown
+- Resource limits and monitoring
+
+## Troubleshooting
+- Check logs for correlation IDs to trace issues
+- Use health endpoint to verify system status
+- Monitor metrics for performance issues
+- Validate configuration with `make validate-config`
+- Test SIP connectivity separately from OpenAI
+
+## Future Considerations
+- Add support for additional codecs
+- Implement call recording functionality
+- Add support for multiple simultaneous calls
+- Enhance NAT traversal options
+- Add more detailed analytics and reporting
