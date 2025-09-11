@@ -120,7 +120,14 @@ jobs:
         # Test configuration validation
         docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "
         import sys
+        import os
         sys.path.append('/app')
+        # Set environment variables
+        os.environ['SIP_DOMAIN'] = 'test.com'
+        os.environ['SIP_USER'] = '1001'
+        os.environ['SIP_PASS'] = 'test'
+        os.environ['OPENAI_API_KEY'] = 'sk-test'
+        os.environ['AGENT_ID'] = 'va-test'
         from config import Settings
         try:
             settings = Settings()

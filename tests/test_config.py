@@ -149,3 +149,18 @@ def test_settings_from_env_file(test_settings):
     assert test_settings.openai_mode == OpenAIAPIMode.REALTIME
     assert test_settings.debug is True
     assert test_settings.structured_logging is False
+
+
+def test_pydantic_v2_compatibility():
+    """Test Pydantic v2 compatibility."""
+    from pydantic import ValidationError
+    
+    # Test validation error handling
+    with pytest.raises(ValidationError):
+        Settings(
+            sip_domain="",  # Empty domain should fail
+            sip_user="1001",
+            sip_pass="testpass",
+            openai_api_key="sk-test-key",
+            agent_id="va_test123"
+        )

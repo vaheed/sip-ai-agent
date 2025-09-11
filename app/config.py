@@ -10,8 +10,8 @@ for maintainability and type safety.
 import os
 from enum import Enum
 from typing import List, Optional, Dict, Any
-from pydantic import BaseSettings, Field, validator
-from pydantic_settings import BaseSettings as PydanticBaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class OpenAIAPIMode(str, Enum):
@@ -46,7 +46,7 @@ class OpenAIRealtimeModel(str, Enum):
     GPT_REALTIME_LATEST = "gpt-realtime-latest"
 
 
-class Settings(PydanticBaseSettings):
+class Settings(BaseSettings):
     """Application settings with validation."""
     
     # SIP Configuration
@@ -110,29 +110,35 @@ class Settings(PydanticBaseSettings):
     log_sip_messages: bool = Field(default=False, description="Log SIP messages for debugging")
     log_audio_samples: bool = Field(default=False, description="Log audio sample data for debugging")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore"
+    }
         
-    @validator('rtp_port_range_end')
-    def validate_rtp_port_range(cls, v, values):
+    @field_validator('rtp_port_range_end')
+    @classmethod
+    def validate_rtp_port_range(cls, v, info):
         """Validate that RTP port range end is greater than start."""
-        if 'rtp_port_range_start' in values and v <= values['rtp_port_range_start']:
-            raise ValueError('RTP port range end must be greater than start')
+        if hasattr(info, 'data') and 'rtp_port_range_start' in info.data:
+            if v <= info.data['rtp_port_range_start']:
+                raise ValueError('RTP port range end must be greater than start')
         return v
     
-    @validator('sip_codecs', pre=True)
+    @field_validator('sip_codecs', mode='before')
+    @classmethod
     def parse_codecs(cls, v):
         """Parse codec list from string or list."""
         if isinstance(v, str):
             return [SIPCodec(codec.strip()) for codec in v.split(',')]
         return v
     
-    @validator('openai_voice')
-    def validate_voice_for_mode(cls, v, values):
+    @field_validator('openai_voice')
+    @classmethod
+    def validate_voice_for_mode(cls, v, info):
         """Validate voice selection for realtime mode."""
-        if values.get('openai_mode') == OpenAIAPIMode.REALTIME:
+        if hasattr(info, 'data') and info.data.get('openai_mode') == OpenAIAPIMode.REALTIME:
             # Realtime API supports newer voices
             supported_voices = {OpenAIVoice.ALLOY, OpenAIVoice.ECHO, OpenAIVoice.FABLE, 
                               OpenAIVoice.ONYX, OpenAIVoice.NOVA, OpenAIVoice.SHIMMER,
@@ -141,10 +147,11 @@ class Settings(PydanticBaseSettings):
                 raise ValueError(f'Voice {v} not supported in realtime mode')
         return v
     
-    @validator('openai_model')
-    def validate_model_for_mode(cls, v, values):
+    @field_validator('openai_model')
+    @classmethod
+    def validate_model_for_mode(cls, v, info):
         """Validate model selection for realtime mode."""
-        if values.get('openai_mode') == OpenAIAPIMode.REALTIME:
+        if hasattr(info, 'data') and info.data.get('openai_mode') == OpenAIAPIMode.REALTIME:
             supported_models = {OpenAIRealtimeModel.GPT_REALTIME, OpenAIRealtimeModel.GPT_REALTIME_LATEST}
             if v not in [model.value for model in supported_models]:
                 raise ValueError(f'Model {v} not supported in realtime mode')
