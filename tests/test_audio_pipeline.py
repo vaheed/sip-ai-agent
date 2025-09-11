@@ -9,6 +9,10 @@ import sys
 import os
 import random
 
+# Mock PJSIP before importing app modules
+sys.modules["pjsua2"] = Mock()
+sys.modules["pjsua2"].pj = Mock()
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from unittest.mock import Mock, AsyncMock, patch
 from sip_client import EnhancedAudioCallback

@@ -11,6 +11,10 @@ import random
 from unittest.mock import Mock, AsyncMock
 import sys
 
+# Mock PJSIP before importing app modules
+sys.modules["pjsua2"] = Mock()
+sys.modules["pjsua2"].pj = Mock()
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from config import Settings
 
@@ -106,9 +110,6 @@ def mock_audio_callback():
 def sample_audio_frame():
     """Generate sample audio frame data for testing."""
     # 16-bit PCM, 16kHz, 20ms frame = 320 samples = 640 bytes
-    import struct
-    import random
-
     samples = [random.randint(-32768, 32767) for _ in range(320)]
     audio_data = struct.pack("<" + "h" * len(samples), *samples)
     return audio_data
