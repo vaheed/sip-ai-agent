@@ -56,5 +56,5 @@ EXPOSE 9090
 EXPOSE 5060/udp
 EXPOSE 16000-16100/udp
 
-# Use the new enhanced agent
-CMD ["python", "agent_new.py"]
+# Use the enhanced agent
+CMD ["python", "agent.py"]

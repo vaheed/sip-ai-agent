@@ -5,8 +5,11 @@ Tests for OpenAI agent functionality.
 import pytest
 import json
 import base64
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 from unittest.mock import Mock, AsyncMock, patch
-from app.openai_agent import OpenAIAgent
+from openai_agent import OpenAIAgent
 from config import OpenAIAPIMode, OpenAIVoice
 
 
@@ -24,7 +27,7 @@ class TestOpenAIAgent:
     @pytest.fixture
     def mock_agent(self, agent_config):
         """Create a mock OpenAI agent."""
-        with patch('app.openai_agent.get_settings') as mock_get_settings:
+        with patch('openai_agent.get_settings') as mock_get_settings:
             mock_get_settings.return_value = agent_config['settings']
             agent = OpenAIAgent(agent_config['correlation_id'])
             return agent
@@ -37,7 +40,7 @@ class TestOpenAIAgent:
     
     def test_configuration_validation_realtime(self, test_settings):
         """Test configuration validation for realtime mode."""
-        with patch('app.openai_agent.get_settings') as mock_get_settings:
+        with patch('openai_agent.get_settings') as mock_get_settings:
             mock_get_settings.return_value = test_settings
             agent = OpenAIAgent('test-correlation-id')
             
@@ -49,7 +52,7 @@ class TestOpenAIAgent:
         # Create invalid settings
         test_settings.openai_voice = "invalid_voice"
         
-        with patch('app.openai_agent.get_settings') as mock_get_settings:
+        with patch('openai_agent.get_settings') as mock_get_settings:
             mock_get_settings.return_value = test_settings
             with pytest.raises(ValueError, match="Voice invalid_voice not supported"):
                 OpenAIAgent('test-correlation-id')
@@ -200,7 +203,7 @@ class TestOpenAIAgent:
     async def test_websocket_connection_handling(self, mock_agent):
         """Test WebSocket connection handling."""
         # Mock WebSocket connection
-        with patch('app.openai_agent.websockets.connect') as mock_connect:
+        with patch('openai_agent.websockets.connect') as mock_connect:
             mock_ws = AsyncMock()
             mock_ws.closed = False
             mock_connect.return_value.__aenter__.return_value = mock_ws
@@ -263,7 +266,7 @@ class TestOpenAIAgentIntegration:
     @pytest.mark.asyncio
     async def test_full_call_flow_realtime(self, test_settings, sample_audio_frame):
         """Test full call flow with realtime API."""
-        with patch('app.openai_agent.get_settings') as mock_get_settings:
+        with patch('openai_agent.get_settings') as mock_get_settings:
             mock_get_settings.return_value = test_settings
             
             agent = OpenAIAgent('test-correlation-id')
@@ -277,7 +280,7 @@ class TestOpenAIAgentIntegration:
             mock_call.playback_audio = Mock()
             
             # Mock WebSocket connection
-            with patch('app.openai_agent.websockets.connect') as mock_connect:
+            with patch('openai_agent.websockets.connect') as mock_connect:
                 mock_ws = AsyncMock()
                 mock_ws.closed = False
                 mock_ws.send = AsyncMock()
@@ -309,7 +312,7 @@ class TestOpenAIAgentIntegration:
         mock_agent.is_active = True
         
         # Mock metrics
-        with patch('app.openai_agent.get_metrics') as mock_get_metrics:
+        with patch('openai_agent.get_metrics') as mock_get_metrics:
             mock_metrics = Mock()
             mock_get_metrics.return_value = mock_metrics
             
@@ -350,11 +353,11 @@ class TestOpenAIAgentIntegration:
                 await asyncio.gather(
                     mock_agent._send_audio_realtime(mock_call),
                     mock_agent._receive_audio_realtime(mock_call),
-                    return_exceptions=True
+                    return_exceptions=True,
                 )
             except Exception:
                 pass
-        
+
         # Verify both operations occurred
         assert mock_ws.send.called
         assert mock_call.playback_audio.called

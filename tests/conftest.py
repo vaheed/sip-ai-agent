@@ -7,6 +7,9 @@ import asyncio
 import os
 import tempfile
 from unittest.mock import Mock, AsyncMock
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 from config import Settings
 
 

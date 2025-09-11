@@ -5,9 +5,12 @@ Tests for audio pipeline functionality.
 import pytest
 import asyncio
 import struct
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 from unittest.mock import Mock, AsyncMock, patch
-from app.sip_client import EnhancedAudioCallback
-from app.openai_agent import OpenAIAgent
+from sip_client import EnhancedAudioCallback
+from openai_agent import OpenAIAgent
 from config import get_settings
 
 
@@ -115,7 +118,7 @@ class TestAudioPipelineIntegration:
         agent = OpenAIAgent("test-correlation-id")
         
         # Mock WebSocket
-        with patch('app.openai_agent.websockets.connect') as mock_connect:
+        with patch('openai_agent.websockets.connect') as mock_connect:
             mock_ws = AsyncMock()
             mock_ws.closed = False
             mock_ws.send = AsyncMock()

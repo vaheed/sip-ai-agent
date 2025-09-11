@@ -118,24 +118,7 @@ jobs:
     - name: Test configuration validation
       run: |
         # Test configuration validation
-        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "
-        import sys
-        import os
-        sys.path.append('/app')
-        # Set environment variables
-        os.environ['SIP_DOMAIN'] = 'test.com'
-        os.environ['SIP_USER'] = '1001'
-        os.environ['SIP_PASS'] = 'test'
-        os.environ['OPENAI_API_KEY'] = 'sk-test'
-        os.environ['AGENT_ID'] = 'va-test'
-        from config import Settings
-        try:
-            settings = Settings()
-            print('Configuration validation passed')
-        except Exception as e:
-            print(f'Configuration validation failed: {e}')
-            sys.exit(1)
-        "
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python test_config.py
 
   security-scan:
     runs-on: ubuntu-latest
@@ -166,8 +149,8 @@ jobs:
     
     - name: Run safety check
       run: |
-        safety check --json --output safety-report.json || true
-        safety check
+        safety scan --json --output safety-report.json || true
+        safety scan
 
   integration-test:
     runs-on: ubuntu-latest

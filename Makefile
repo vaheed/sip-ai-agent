@@ -62,24 +62,11 @@ docker-test: ## Test Docker image
 
 # Configuration validation
 validate-config: ## Validate configuration
-	python -c "
-import sys
-sys.path.append('app')
-from config import Settings
-try:
-    settings = Settings()
-    print('✅ Configuration validation passed')
-    print(f'   SIP Domain: {settings.sip_domain}')
-    print(f'   OpenAI Mode: {settings.openai_mode.value}')
-    print(f'   Metrics Enabled: {settings.metrics_enabled}')
-except Exception as e:
-    print(f'❌ Configuration validation failed: {e}')
-    sys.exit(1)
-"
+	python test_config.py
 
 # Development server
 dev: ## Run development server (requires .env file)
-	python app/agent_new.py
+	python app/agent.py
 
 # Monitoring
 monitor: ## Open monitoring dashboard
