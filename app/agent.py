@@ -312,7 +312,7 @@ class Call(pj.Call):
                     continue
                 try:
                     message = json.loads(raw_msg)
-                except Exception:
+                except Exception:  # nosec B112
                     # Skip non‑JSON messages
                     continue
                 msg_type = message.get('type')

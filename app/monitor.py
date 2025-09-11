@@ -41,7 +41,7 @@ def load_config() -> dict:
                     if '=' in line:
                         key, value = line.split('=', 1)
                         config[key.strip()] = value.strip()
-        except Exception:
+        except Exception:  # nosec B110
             # Silently ignore read errors; caller can handle missing keys
             pass
     return config

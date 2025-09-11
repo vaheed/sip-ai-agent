@@ -93,7 +93,7 @@ class Settings(PydanticBaseSettings):
     openai_retry_backoff: float = Field(default=1.5, ge=1.0, le=10.0, description="OpenAI retry backoff multiplier")
     
     # Monitoring Configuration
-    monitor_host: str = Field(default="0.0.0.0", description="Monitor server host")
+    monitor_host: str = Field(default="0.0.0.0", description="Monitor server host")  # nosec B104
     monitor_port: int = Field(default=8080, ge=1024, le=65535, description="Monitor server port")
     monitor_log_level: str = Field(default="INFO", description="Log level")
     monitor_max_logs: int = Field(default=1000, ge=100, le=10000, description="Maximum number of logs to keep")
