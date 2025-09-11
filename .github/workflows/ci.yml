@@ -53,14 +53,6 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Tests
     
-    services:
-      # We don't actually need Redis or PostgreSQL for these tests,
-      # but this shows how you could add service dependencies
-      # redis:
-      #   image: redis:latest
-      #   ports:
-      #     - 6379:6379
-    
     steps:
     - uses: actions/checkout@v4
     
