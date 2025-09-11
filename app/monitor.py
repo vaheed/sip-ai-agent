@@ -9,6 +9,7 @@ from logging_config import get_logger, with_correlation_id, generate_correlation
 from metrics import get_metrics
 from health import get_health_monitor, HealthStatus
 
+
 def _env_path():
     """
     Return the absolute path to the .env file located two directories above
@@ -17,7 +18,9 @@ def _env_path():
     /project/sip-ai-agent-main/.env. Modify this logic if the repository
     layout changes.
     """
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
+    )
 
 
 def load_config() -> dict:
@@ -33,13 +36,13 @@ def load_config() -> dict:
     env_path = _env_path()
     if os.path.exists(env_path):
         try:
-            with open(env_path, 'r', encoding='utf-8') as f:
+            with open(env_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
-                    if '=' in line:
-                        key, value = line.split('=', 1)
+                    if "=" in line:
+                        key, value = line.split("=", 1)
                         config[key.strip()] = value.strip()
         except Exception:  # nosec B110
             # Silently ignore read errors; caller can handle missing keys
@@ -67,8 +70,8 @@ def save_config(new_config: dict) -> None:
     # Write back
     lines = [f"{key}={value}" for key, value in config.items()]
     try:
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
     except Exception:
         # If we cannot write the env file, surface an error to the caller
         raise
@@ -86,10 +89,21 @@ class Monitor:
     # rendering. Feel free to extend this list with additional environment
     # variables that should be editable through the UI.
     CONFIG_KEYS = [
-        'SIP_DOMAIN', 'SIP_USER', 'SIP_PASS', 'OPENAI_API_KEY', 'AGENT_ID',
-        'OPENAI_MODE', 'OPENAI_MODEL', 'OPENAI_VOICE', 'OPENAI_TEMPERATURE', 'SYSTEM_PROMPT',
-        'SIP_SRTP_ENABLED', 'SIP_JITTER_BUFFER_SIZE', 'AUDIO_BACKPRESSURE_THRESHOLD',
-        'SIP_REGISTRATION_RETRY_MAX', 'SIP_REGISTRATION_RETRY_BACKOFF'
+        "SIP_DOMAIN",
+        "SIP_USER",
+        "SIP_PASS",
+        "OPENAI_API_KEY",
+        "AGENT_ID",
+        "OPENAI_MODE",
+        "OPENAI_MODEL",
+        "OPENAI_VOICE",
+        "OPENAI_TEMPERATURE",
+        "SYSTEM_PROMPT",
+        "SIP_SRTP_ENABLED",
+        "SIP_JITTER_BUFFER_SIZE",
+        "AUDIO_BACKPRESSURE_THRESHOLD",
+        "SIP_REGISTRATION_RETRY_MAX",
+        "SIP_REGISTRATION_RETRY_BACKOFF",
     ]
 
     def __init__(self):
@@ -97,7 +111,7 @@ class Monitor:
         self.logger = get_logger("monitor")
         self.metrics = get_metrics()
         self.health_monitor = get_health_monitor()
-        
+
         self.app = Flask(__name__)
         self.sip_registered = False
         self.active_calls = []
@@ -106,11 +120,12 @@ class Monitor:
         self.logs = []
         self.max_logs = self.settings.monitor_max_logs
         self.setup_routes()
-        
+
     def setup_routes(self):
-        @self.app.route('/')
+        @self.app.route("/")
         def index():
-            return render_template_string('''
+            return render_template_string(
+                """
             <!DOCTYPE html>
             <html>
             <head>
@@ -170,10 +185,14 @@ class Monitor:
                 </div>
             </body>
             </html>
-            ''', sip_registered=self.sip_registered, active_calls=self.active_calls, 
-                 api_tokens_used=self.api_tokens_used, logs=self.logs)
+            """,
+                sip_registered=self.sip_registered,
+                active_calls=self.active_calls,
+                api_tokens_used=self.api_tokens_used,
+                logs=self.logs,
+            )
 
-        @self.app.route('/dashboard', methods=['GET'])
+        @self.app.route("/dashboard", methods=["GET"])
         def dashboard():
             """
             Serve a dashboard page with real‑time status and a configuration form.
@@ -188,12 +207,21 @@ class Monitor:
             # build HTML form inputs for each config key
             config_fields = []
             for key in Monitor.CONFIG_KEYS:
-                value = config.get(key, '')
+                value = config.get(key, "")
                 # Escape HTML special characters
-                safe_value = str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-                config_fields.append(f'<label for="{key}">{key}</label><input type="text" id="{key}" name="{key}" value="{safe_value}" style="width:100%"/><br/>')
-            config_form = '\n'.join(config_fields)
-            return render_template_string('''
+                safe_value = (
+                    str(value)
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                )
+                config_fields.append(
+                    f'<label for="{key}">{key}</label><input type="text" id="{key}" name="{key}" value="{safe_value}" style="width:100%"/><br/>'
+                )
+            config_form = "\n".join(config_fields)
+            return render_template_string(
+                """
             <!DOCTYPE html>
             <html>
             <head>
@@ -217,7 +245,9 @@ class Monitor:
                     <div class="card">
                         <h2>Configuration</h2>
                         <form id="configForm" method="post" action="/api/update_config">
-                            ''' + config_form + '''
+                            """
+                + config_form
+                + """
                             <button type="submit">Save</button>
                         </form>
                         <p><small>After saving, restart the container to apply changes.</small></p>
@@ -278,9 +308,10 @@ class Monitor:
                 </script>
             </body>
             </html>
-            ''')
+            """
+            )
 
-        @self.app.route('/api/update_config', methods=['POST'])
+        @self.app.route("/api/update_config", methods=["POST"])
         def api_update_config():
             """
             Update the configuration file with values submitted from the dashboard.
@@ -303,39 +334,41 @@ class Monitor:
                             new_config[key] = val
                 if new_config:
                     save_config(new_config)
-                    self.add_log(f"Configuration updated: {', '.join(new_config.keys())}")
-                return jsonify({'success': True})
+                    self.add_log(
+                        f"Configuration updated: {', '.join(new_config.keys())}"
+                    )
+                return jsonify({"success": True})
             except Exception as e:
                 self.add_log(f"Error updating config: {e}")
-                return jsonify({'success': False, 'error': str(e)}), 500
+                return jsonify({"success": False, "error": str(e)}), 500
 
-        @self.app.route('/api/call_history')
+        @self.app.route("/api/call_history")
         def api_call_history():
             """
             Return the call history as JSON. Each item has call_id, start, end.
             """
             return jsonify(self.call_history)
-        
-        @self.app.route('/api/status')
+
+        @self.app.route("/api/status")
         def api_status():
-            return jsonify({
-                'sip_registered': self.sip_registered,
-                'active_calls': self.active_calls,
-                'api_tokens_used': self.api_tokens_used
-            })
-        
-        @self.app.route('/api/logs')
+            return jsonify(
+                {
+                    "sip_registered": self.sip_registered,
+                    "active_calls": self.active_calls,
+                    "api_tokens_used": self.api_tokens_used,
+                }
+            )
+
+        @self.app.route("/api/logs")
         def api_logs():
-            return jsonify({
-                'logs': self.logs
-            })
-        
-        @self.app.route('/healthz')
+            return jsonify({"logs": self.logs})
+
+        @self.app.route("/healthz")
         async def health_check():
             """Health check endpoint for Kubernetes and monitoring systems."""
             try:
                 report = await self.health_monitor.run_health_checks()
-                
+
                 # Return appropriate HTTP status code based on health
                 status_code = 200
                 if report.overall_status == HealthStatus.CRITICAL:
@@ -344,120 +377,150 @@ class Monitor:
                     status_code = 503
                 elif report.overall_status == HealthStatus.DEGRADED:
                     status_code = 200  # Degraded but still operational
-                
-                return jsonify({
-                    'status': report.overall_status.value,
-                    'timestamp': report.timestamp,
-                    'uptime_seconds': report.uptime_seconds,
-                    'checks': [
+
+                return (
+                    jsonify(
                         {
-                            'name': check.name,
-                            'status': check.status.value,
-                            'message': check.message,
-                            'duration_ms': check.duration_ms
+                            "status": report.overall_status.value,
+                            "timestamp": report.timestamp,
+                            "uptime_seconds": report.uptime_seconds,
+                            "checks": [
+                                {
+                                    "name": check.name,
+                                    "status": check.status.value,
+                                    "message": check.message,
+                                    "duration_ms": check.duration_ms,
+                                }
+                                for check in report.checks
+                            ],
                         }
-                        for check in report.checks
-                    ]
-                }), status_code
-                
+                    ),
+                    status_code,
+                )
+
             except Exception as e:
                 self.logger.error("Health check failed", error=str(e))
-                return jsonify({
-                    'status': 'critical',
-                    'error': str(e),
-                    'timestamp': time.time()
-                }), 503
-        
-        @self.app.route('/metrics')
+                return (
+                    jsonify(
+                        {
+                            "status": "critical",
+                            "error": str(e),
+                            "timestamp": time.time(),
+                        }
+                    ),
+                    503,
+                )
+
+        @self.app.route("/metrics")
         def metrics_endpoint():
             """Prometheus metrics endpoint."""
             if not self.settings.metrics_enabled:
                 return "Metrics disabled", 404
-            
+
             from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
             from flask import Response
-            
+
             data = generate_latest()
             return Response(data, mimetype=CONTENT_TYPE_LATEST)
-        
-        @self.app.route('/api/metrics/summary')
+
+        @self.app.route("/api/metrics/summary")
         def metrics_summary():
             """Get a summary of key metrics."""
-            return jsonify({
-                'active_calls': self.metrics.get_active_calls_count(),
-                'sip_registered': self.sip_registered,
-                'api_tokens_used': self.api_tokens_used,
-                'uptime_seconds': self.health_monitor.get_uptime(),
-                'system_metrics': self.health_monitor.get_system_metrics()
-            })
-    
+            return jsonify(
+                {
+                    "active_calls": self.metrics.get_active_calls_count(),
+                    "sip_registered": self.sip_registered,
+                    "api_tokens_used": self.api_tokens_used,
+                    "uptime_seconds": self.health_monitor.get_uptime(),
+                    "system_metrics": self.health_monitor.get_system_metrics(),
+                }
+            )
+
     def update_registration(self, status):
         self.sip_registered = status
         self.metrics.update_sip_registration_status(
             self.settings.sip_domain, self.settings.sip_user, status
         )
-        self.add_log(f"SIP Registration: {'Registered' if status else 'Not Registered'}")
+        self.add_log(
+            f"SIP Registration: {'Registered' if status else 'Not Registered'}"
+        )
         self.logger.info("SIP registration status updated", registered=status)
-    
+
     def add_call(self, call_id):
         correlation_id = generate_correlation_id()
         if call_id not in self.active_calls:
             self.active_calls.append(call_id)
             # Record call start time
-            self.call_history.append({'call_id': call_id, 'start': time.time(), 'end': None})
+            self.call_history.append(
+                {"call_id": call_id, "start": time.time(), "end": None}
+            )
             self.add_log(f"New call: {call_id}")
-            self.logger.info("New call added", call_id=call_id, correlation_id=correlation_id)
+            self.logger.info(
+                "New call added", call_id=call_id, correlation_id=correlation_id
+            )
             self.metrics.record_call_start(str(call_id))
-    
+
     def remove_call(self, call_id):
         if call_id in self.active_calls:
             self.active_calls.remove(call_id)
             # Record call end time
             for item in self.call_history:
-                if item['call_id'] == call_id and item['end'] is None:
-                    item['end'] = time.time()
+                if item["call_id"] == call_id and item["end"] is None:
+                    item["end"] = time.time()
                     break
             self.add_log(f"Call ended: {call_id}")
             self.logger.info("Call removed", call_id=call_id)
             self.metrics.record_call_end(str(call_id))
-    
+
     def update_tokens(self, tokens):
         self.api_tokens_used += tokens
         self.add_log(f"API tokens used: +{tokens} (Total: {self.api_tokens_used})")
-        self.logger.info("Token usage updated", tokens_added=tokens, total_tokens=self.api_tokens_used)
-    
+        self.logger.info(
+            "Token usage updated",
+            tokens_added=tokens,
+            total_tokens=self.api_tokens_used,
+        )
+
     def add_log(self, message):
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
         print(log_entry)  # Also print to console
-        
+
         # Keep logs at a reasonable size
         if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-    
+            self.logs = self.logs[-self.max_logs :]
+
     def start(self):
         # Start metrics server if enabled
         if self.settings.metrics_enabled:
             self.metrics.start_metrics_server()
-        
+
         # Start Flask in a separate thread
         threading.Thread(target=self._run_server, daemon=True).start()
         self.add_log(f"Monitoring server started on port {self.settings.monitor_port}")
-        self.logger.info("Monitor started", 
-                        port=self.settings.monitor_port,
-                        metrics_enabled=self.settings.metrics_enabled,
-                        metrics_port=self.settings.metrics_port if self.settings.metrics_enabled else None)
-    
+        self.logger.info(
+            "Monitor started",
+            port=self.settings.monitor_port,
+            metrics_enabled=self.settings.metrics_enabled,
+            metrics_port=(
+                self.settings.metrics_port if self.settings.metrics_enabled else None
+            ),
+        )
+
     def _run_server(self):
         # Explicitly disable Flask's logging to keep console output clean
         import logging as _logging
-        log = _logging.getLogger('werkzeug')
+
+        log = _logging.getLogger("werkzeug")
         log.setLevel(_logging.ERROR)
-        self.app.run(host=self.settings.monitor_host, 
-                    port=self.settings.monitor_port, 
-                    debug=self.settings.debug, 
-                    use_reloader=False)
+        self.app.run(
+            host=self.settings.monitor_host,
+            port=self.settings.monitor_port,
+            debug=self.settings.debug,
+            use_reloader=False,
+        )
+
 
 # Singleton instance
 monitor = Monitor()

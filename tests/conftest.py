@@ -9,7 +9,8 @@ import tempfile
 from unittest.mock import Mock, AsyncMock
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from config import Settings
 
 
@@ -24,8 +25,9 @@ def event_loop():
 @pytest.fixture
 def temp_env_file():
     """Create a temporary .env file for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
-        f.write("""# Test configuration
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
+        f.write(
+            """# Test configuration
 SIP_DOMAIN=test.example.com
 SIP_USER=1001
 SIP_PASS=testpass
@@ -44,11 +46,12 @@ SIP_REGISTRATION_RETRY_BACKOFF=2.0
 DEBUG=true
 STRUCTURED_LOGGING=false
 METRICS_ENABLED=false
-""")
+"""
+        )
         temp_file = f.name
-    
+
     yield temp_file
-    
+
     # Cleanup
     try:
         os.unlink(temp_file)
@@ -60,8 +63,8 @@ METRICS_ENABLED=false
 def test_settings(temp_env_file):
     """Create test settings with temporary environment file."""
     # Set the env file path
-    os.environ['ENV_FILE'] = temp_env_file
-    
+    os.environ["ENV_FILE"] = temp_env_file
+
     # Create settings instance
     settings = Settings(_env_file=temp_env_file)
     return settings
@@ -104,9 +107,9 @@ def sample_audio_frame():
     # 16-bit PCM, 16kHz, 20ms frame = 320 samples = 640 bytes
     import struct
     import random
-    
+
     samples = [random.randint(-32768, 32767) for _ in range(320)]
-    audio_data = struct.pack('<' + 'h' * len(samples), *samples)
+    audio_data = struct.pack("<" + "h" * len(samples), *samples)
     return audio_data
 
 
@@ -115,19 +118,22 @@ def sample_rtp_frame():
     """Generate sample RTP frame data for testing."""
     import struct
     import random
-    
+
     # RTP header (12 bytes) + payload
-    rtp_header = struct.pack('!BBHII', 
-                            0x80,  # Version, padding, extension, CSRC count
-                            0,     # Marker, payload type
-                            random.randint(1, 65535),  # Sequence number
-                            random.randint(1, 2**32-1),  # Timestamp
-                            random.randint(1, 2**32-1))  # SSRC
-    
+    rtp_header = struct.pack(
+        "!BBHII",
+        0x80,  # Version, padding, extension, CSRC count
+        0,  # Marker, payload type
+        random.randint(1, 65535),  # Sequence number
+        random.randint(1, 2**32 - 1),  # Timestamp
+        random.randint(1, 2**32 - 1),
+    )  # SSRC
+
     # Payload (320 samples = 640 bytes for 16-bit PCM)
-    payload = struct.pack('<' + 'h' * 320, 
-                         *[random.randint(-32768, 32767) for _ in range(320)])
-    
+    payload = struct.pack(
+        "<" + "h" * 320, *[random.randint(-32768, 32767) for _ in range(320)]
+    )
+
     return rtp_header + payload
 
 
@@ -162,9 +168,11 @@ def mock_health_monitor():
     mock_health = Mock()
     mock_health.run_health_checks = AsyncMock()
     mock_health.get_uptime = Mock(return_value=3600.0)
-    mock_health.get_system_metrics = Mock(return_value={
-        "cpu_percent": 25.0,
-        "memory": {"percent": 50.0},
-        "disk": {"percent": 30.0}
-    })
+    mock_health.get_system_metrics = Mock(
+        return_value={
+            "cpu_percent": 25.0,
+            "memory": {"percent": 50.0},
+            "disk": {"percent": 30.0},
+        }
+    )
     return mock_health
