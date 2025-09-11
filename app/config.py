@@ -143,8 +143,8 @@ class Settings(BaseSettings):
 
     # Monitoring Configuration
     monitor_host: str = Field(
-        default="0.0.0.0", description="Monitor server host"
-    )  # nosec B104
+        default="0.0.0.0", description="Monitor server host"  # nosec B104
+    )
     monitor_port: int = Field(
         default=8080, ge=1024, le=65535, description="Monitor server port"
     )

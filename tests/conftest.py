@@ -6,9 +6,10 @@ import pytest
 import asyncio
 import os
 import tempfile
+import struct
+import random
 from unittest.mock import Mock, AsyncMock
 import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from config import Settings
@@ -116,9 +117,6 @@ def sample_audio_frame():
 @pytest.fixture
 def sample_rtp_frame():
     """Generate sample RTP frame data for testing."""
-    import struct
-    import random
-
     # RTP header (12 bytes) + payload
     rtp_header = struct.pack(
         "!BBHII",
