@@ -92,7 +92,7 @@ class TestOpenAIAgent:
 
         # Mock WebSocket
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_ws.send = AsyncMock()
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
@@ -138,7 +138,7 @@ class TestOpenAIAgent:
         ]
 
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_ws.recv = AsyncMock(side_effect=mock_responses)
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
@@ -166,7 +166,7 @@ class TestOpenAIAgent:
 
         # Mock WebSocket
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_ws.send = AsyncMock()
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
@@ -192,7 +192,7 @@ class TestOpenAIAgent:
         mock_responses = [b"\x00\x01" * 160, b"\x02\x03" * 160, None]
 
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_ws.recv = AsyncMock(side_effect=mock_responses)
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
@@ -212,7 +212,7 @@ class TestOpenAIAgent:
         # Mock WebSocket connection
         with patch("openai_agent.websockets.connect") as mock_connect:
             mock_ws = AsyncMock()
-            mock_ws.closed = False
+            mock_ws.close_code = None
             mock_connect.return_value.__aenter__.return_value = mock_ws
 
             # Mock call
@@ -246,7 +246,7 @@ class TestOpenAIAgent:
 
         # Mock WebSocket
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
 
@@ -295,7 +295,7 @@ class TestOpenAIAgentIntegration:
             # Mock WebSocket connection
             with patch("openai_agent.websockets.connect") as mock_connect:
                 mock_ws = AsyncMock()
-                mock_ws.closed = False
+                mock_ws.close_code = None
                 mock_ws.send = AsyncMock()
                 mock_ws.recv = AsyncMock(
                     return_value=json.dumps(
@@ -332,7 +332,7 @@ class TestOpenAIAgentIntegration:
 
         # Mock WebSocket
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
 
@@ -361,7 +361,7 @@ class TestOpenAIAgentIntegration:
         mock_call.playback_audio = Mock()
 
         mock_ws = AsyncMock()
-        mock_ws.closed = False
+        mock_ws.close_code = None
         mock_ws.send = AsyncMock()
         mock_ws.recv = AsyncMock(
             return_value=json.dumps(
