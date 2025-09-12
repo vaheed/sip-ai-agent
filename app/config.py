@@ -7,7 +7,6 @@ and environment variable support. All configuration is centralized here
 for maintainability and type safety.
 """
 
-import os
 from enum import Enum
 from typing import Any, Dict, List, Optional
 

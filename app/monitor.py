@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import asyncio
+# import asyncio  # unused
 import os
 import threading
 import time
@@ -8,7 +8,7 @@ from flask import Flask, jsonify, render_template_string, request
 
 from config import get_settings
 from health import HealthStatus, get_health_monitor
-from logging_config import generate_correlation_id, get_logger, with_correlation_id
+from logging_config import generate_correlation_id, get_logger
 from metrics import get_metrics
 
 

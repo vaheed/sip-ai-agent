@@ -10,7 +10,7 @@ import asyncio
 import base64
 import json
 import time
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import Any, Optional
 
 import websockets
 from openai import OpenAI

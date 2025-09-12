@@ -9,11 +9,11 @@ NAT traversal support, SRTP encryption, and comprehensive error handling.
 import asyncio
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 import pjsua2 as pj
 
-from config import SIPCodec, get_settings
+from config import get_settings
 from logging_config import (
     generate_correlation_id,
     get_logger,
