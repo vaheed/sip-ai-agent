@@ -333,6 +333,7 @@ class TestOpenAIAgentIntegration:
         # Mock WebSocket
         mock_ws = AsyncMock()
         mock_ws.close_code = None
+        mock_ws.send = AsyncMock()
         mock_agent.ws = mock_ws
         mock_agent.is_active = True
 
@@ -376,7 +377,8 @@ class TestOpenAIAgentIntegration:
 
         # Run both send and receive concurrently
         with patch("asyncio.sleep") as mock_sleep:
-            mock_sleep.side_effect = [None, None, Exception("Stop loop")]
+            # Provide enough sleep iterations for both concurrent methods
+            mock_sleep.side_effect = [None] * 10 + [Exception("Stop loop")]
 
             try:
                 await asyncio.gather(
