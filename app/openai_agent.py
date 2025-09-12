@@ -6,14 +6,16 @@ This module provides robust integration with OpenAI's API, including
 the legacy speech API and the new realtime API with proper session management.
 """
 
-import json
-import base64
 import asyncio
+import base64
+import json
 import time
+from typing import Any, AsyncGenerator, Dict, Optional
+
 import websockets
-from typing import Optional, Dict, Any, AsyncGenerator
 from openai import OpenAI
-from config import get_settings, OpenAIAPIMode, OpenAIVoice, OpenAIRealtimeModel
+
+from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice, get_settings
 from logging_config import get_logger, log_openai_event, with_correlation_id
 from metrics import get_metrics
 

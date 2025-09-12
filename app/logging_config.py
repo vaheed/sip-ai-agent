@@ -6,12 +6,14 @@ This module provides JSON-structured logging with correlation IDs,
 performance metrics, and integration with the monitoring system.
 """
 
-import sys
 import json
+import sys
 import time
 import uuid
-import structlog
 from typing import Any, Dict, Optional
+
+import structlog
+
 from config import get_settings
 
 

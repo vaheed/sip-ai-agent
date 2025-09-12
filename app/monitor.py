@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-import os
-import time
-import threading
 import asyncio
+import os
+import threading
+import time
+
 from flask import Flask, jsonify, render_template_string, request
+
 from config import get_settings
-from logging_config import get_logger, with_correlation_id, generate_correlation_id
+from health import HealthStatus, get_health_monitor
+from logging_config import generate_correlation_id, get_logger, with_correlation_id
 from metrics import get_metrics
-from health import get_health_monitor, HealthStatus
 
 
 def _env_path():
@@ -417,8 +419,8 @@ class Monitor:
             if not self.settings.metrics_enabled:
                 return "Metrics disabled", 404
 
-            from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
             from flask import Response
+            from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
             data = generate_latest()
             return Response(data, mimetype=CONTENT_TYPE_LATEST)

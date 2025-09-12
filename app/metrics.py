@@ -8,7 +8,9 @@ SIP registration status, audio pipeline health, and OpenAI API usage.
 
 import time
 from typing import Dict, Optional
-from prometheus_client import Counter, Histogram, Gauge, Info, start_http_server
+
+from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
+
 from config import get_settings
 from logging_config import get_logger
 

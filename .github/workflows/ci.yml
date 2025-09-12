@@ -150,7 +150,7 @@ jobs:
     - name: Run safety check
       run: |
         safety scan --output json > safety-report.json || true
-        safety scan --output screen
+        safety check --output screen
 
   integration-test:
     runs-on: ubuntu-latest

@@ -2,12 +2,13 @@
 Tests for configuration management.
 """
 
-import pytest
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-from config import Settings, OpenAIAPIMode, OpenAIVoice, SIPCodec
+from config import OpenAIAPIMode, OpenAIVoice, Settings, SIPCodec
 
 
 def test_settings_validation():

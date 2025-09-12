@@ -16,18 +16,19 @@ import signal
 import sys
 import time
 from typing import Optional
+
 from config import get_settings, reload_settings
+from health import get_health_monitor
 from logging_config import (
-    setup_logging,
-    get_logger,
-    with_correlation_id,
     generate_correlation_id,
+    get_logger,
+    setup_logging,
+    with_correlation_id,
 )
 from metrics import get_metrics
-from health import get_health_monitor
-from sip_client import SIPClient, SIPRegistrationError
-from openai_agent import OpenAIAgent
 from monitor import monitor
+from openai_agent import OpenAIAgent
+from sip_client import SIPClient, SIPRegistrationError
 
 
 class SIPAIAgent:

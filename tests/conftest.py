@@ -2,14 +2,15 @@
 Pytest configuration and fixtures for SIP AI Agent tests.
 """
 
-import pytest
 import asyncio
 import os
-import tempfile
-import struct
 import random
-from unittest.mock import Mock, AsyncMock
+import struct
 import sys
+import tempfile
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 # Mock PJSIP before importing app modules
 sys.modules["pjsua2"] = Mock()

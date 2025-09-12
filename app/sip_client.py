@@ -6,17 +6,19 @@ This module provides a robust SIP client with automatic reconnection,
 NAT traversal support, SRTP encryption, and comprehensive error handling.
 """
 
-import time
 import asyncio
 import threading
-from typing import Optional, Dict, Any, Callable, List
+import time
+from typing import Any, Callable, Dict, List, Optional
+
 import pjsua2 as pj
-from config import get_settings, SIPCodec
+
+from config import SIPCodec, get_settings
 from logging_config import (
+    generate_correlation_id,
     get_logger,
     log_sip_event,
     with_correlation_id,
-    generate_correlation_id,
 )
 from metrics import get_metrics
 

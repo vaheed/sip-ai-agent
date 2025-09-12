@@ -2,16 +2,18 @@
 Tests for OpenAI agent functionality.
 """
 
-import pytest
-import json
 import base64
-import sys
+import json
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-from unittest.mock import Mock, AsyncMock, patch
-from openai_agent import OpenAIAgent
+from unittest.mock import AsyncMock, Mock, patch
+
 from config import OpenAIAPIMode, OpenAIVoice
+from openai_agent import OpenAIAgent
 
 
 class TestOpenAIAgent:
