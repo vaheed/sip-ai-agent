@@ -3,8 +3,8 @@
 Simple configuration test script for CI/CD validation.
 """
 
-import sys
 import os
+import sys
 
 # Add app directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "app"))

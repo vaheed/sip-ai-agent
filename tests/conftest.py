@@ -8,13 +8,23 @@ import random
 import struct
 import sys
 import tempfile
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+
 # Mock PJSIP before importing app modules
-sys.modules["pjsua2"] = Mock()
-sys.modules["pjsua2"].pj = Mock()
+class MockAudioMedia:
+    def __init__(self):
+        pass
+
+class MockPJ:
+    AudioMedia = MockAudioMedia
+    PJMEDIA_FRAME_TYPE_AUDIO = 1
+
+mock_pjsua2 = Mock()
+mock_pjsua2.pj = MockPJ()
+sys.modules["pjsua2"] = mock_pjsua2
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 from config import Settings
@@ -176,3 +186,34 @@ def mock_health_monitor():
         }
     )
     return mock_health
+
+
+@pytest.fixture
+def mock_call():
+    """Create a mock call object for testing."""
+    mock_call = Mock()
+    mock_call.correlation_id = "test-correlation-id"
+    mock_call.audio_callback = Mock()
+    mock_call.audio_callback.is_active = True
+    mock_call.audio_callback.get_audio_frame = AsyncMock()
+    mock_call.playback_audio = Mock()
+    return mock_call
+
+
+@pytest.fixture
+def mock_agent():
+    """Create a mock OpenAI agent for testing."""
+    with patch("openai_agent.get_settings") as mock_get_settings:
+        from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice
+        
+        mock_settings = Mock()
+        mock_settings.openai_mode = OpenAIAPIMode.REALTIME
+        mock_settings.openai_model = OpenAIRealtimeModel.GPT_REALTIME.value
+        mock_settings.openai_voice = OpenAIVoice.ALLOY
+        mock_get_settings.return_value = mock_settings
+        
+        from openai_agent import OpenAIAgent
+        agent = OpenAIAgent("test-correlation-id")
+        agent.ws = None  # Will be set in individual tests
+        agent.is_active = True
+        return agent

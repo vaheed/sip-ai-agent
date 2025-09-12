@@ -45,13 +45,16 @@ def test_settings_defaults():
 
 def test_settings_validation_errors():
     """Test settings validation with invalid configuration."""
+    # Test with invalid RTP port range (should raise ValueError)
     with pytest.raises(ValueError):
         Settings(
-            sip_domain="",  # Empty domain should fail
+            sip_domain="test.example.com",
             sip_user="1001",
             sip_pass="testpass",
             openai_api_key="sk-test-key",
             agent_id="va_test123",
+            rtp_port_range_start=20000,
+            rtp_port_range_end=10000,  # End < start should fail
         )
 
 
@@ -159,12 +162,14 @@ def test_pydantic_v2_compatibility():
     """Test Pydantic v2 compatibility."""
     from pydantic import ValidationError
 
-    # Test validation error handling
+    # Test validation error handling with invalid voice for realtime mode
     with pytest.raises(ValidationError):
         Settings(
-            sip_domain="",  # Empty domain should fail
+            sip_domain="test.example.com",
             sip_user="1001",
             sip_pass="testpass",
             openai_api_key="sk-test-key",
             agent_id="va_test123",
+            openai_mode="realtime",
+            openai_voice="invalid_voice",  # Invalid voice should fail
         )
