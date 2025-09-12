@@ -14,6 +14,7 @@ from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 import websockets
 from openai import OpenAI
+from websockets import connect
 
 from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice, get_settings
 from logging_config import get_logger, log_openai_event, with_correlation_id
@@ -108,7 +109,7 @@ class OpenAIAgent:
         }
 
         try:
-            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+            async with connect(ws_url, extra_headers=headers) as self.ws:
                 metrics.record_websocket_connection(self.settings.openai_mode.value)
 
                 # Send initial configuration
@@ -162,7 +163,7 @@ class OpenAIAgent:
         }
 
         try:
-            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+            async with connect(ws_url, extra_headers=headers) as self.ws:
                 metrics.record_websocket_connection(self.settings.openai_mode.value)
 
                 # Send session.update with proper configuration
