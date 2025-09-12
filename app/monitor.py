@@ -149,7 +149,7 @@ class Monitor:
                 <div class="container">
                     <h1>SIP AI Agent Monitor</h1>
                     <button class="refresh" onclick="location.reload()">Refresh</button>
-                    
+
                     <div class="card">
                         <h2>SIP Registration</h2>
                         <p>
@@ -157,7 +157,7 @@ class Monitor:
                             {{ 'Registered' if sip_registered else 'Not Registered' }}
                         </p>
                     </div>
-                    
+
                     <div class="card">
                         <h2>Active Calls</h2>
                         {% if active_calls %}
@@ -170,12 +170,12 @@ class Monitor:
                             <p>No active calls</p>
                         {% endif %}
                     </div>
-                    
+
                     <div class="card">
                         <h2>API Usage</h2>
                         <p>Tokens used: {{ api_tokens_used }}</p>
                     </div>
-                    
+
                     <div class="card">
                         <h2>Logs</h2>
                         <div class="logs">

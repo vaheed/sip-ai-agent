@@ -1,11 +1,12 @@
 [flake8]
 max-line-length = 88
 extend-ignore = 
-    E203,  # whitespace before ':'
-    E501,  # line too long (handled by black)
-    W503,  # line break before binary operator
-    E402,  # module level import not at top of file
-    F401,  # imported but unused (handled by other tools)
+    E203,
+    E501,
+    W503,
+    E402,
+    F401,
+    C901
 exclude = 
     .git,
     __pycache__,
@@ -31,6 +32,6 @@ per-file-ignores =
 max-complexity = 10
 select = C,E,F,W,B,B950
 ignore = 
-    E203,  # whitespace before ':'
-    E501,  # line too long (handled by black)
-    W503,  # line break before binary operator
+    E203,
+    E501,
+    W503
