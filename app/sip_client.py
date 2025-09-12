@@ -45,7 +45,7 @@ class EnhancedAudioCallback(pj.AudioMedia):
         pj.AudioMedia.__init__(self)
         self.call = call
         self.correlation_id = correlation_id
-        self.audio_queue = asyncio.Queue(
+        self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue(
             maxsize=get_settings().audio_backpressure_threshold
         )
         self.is_active = True
@@ -271,7 +271,7 @@ class EnhancedAccount(pj.Account):
         self.is_registered = False
         self.registration_attempts = 0
         self.last_registration_attempt = 0
-        self.registration_start_time = 0
+        self.registration_start_time: float = 0.0
         self.reconnect_task = None
 
     def onRegState(self, prm):
@@ -496,6 +496,9 @@ class SIPClient:
         if not self.is_initialized:
             raise SIPRegistrationError("SIP client not initialized")
 
+        if self.account is None:
+            raise SIPRegistrationError("SIP account not initialized")
+
         await self.account._attempt_registration()
 
     def shutdown(self) -> None:
@@ -519,4 +522,4 @@ class SIPClient:
 
     def is_registered(self) -> bool:
         """Check if the SIP client is registered."""
-        return self.account and self.account.is_registered
+        return self.account is not None and self.account.is_registered

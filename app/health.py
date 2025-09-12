@@ -60,7 +60,7 @@ class HealthMonitor:
         self.settings = get_settings()
         self.metrics = get_metrics()
         self.start_time = time.time()
-        self.last_check_time = 0
+        self.last_check_time: float = 0.0
         self.check_results: Dict[str, HealthCheck] = {}
 
     def get_uptime(self) -> float:
@@ -302,22 +302,36 @@ class HealthMonitor:
         results = await asyncio.gather(*checks, return_exceptions=True)
 
         # Process results
-        health_checks = []
+        health_checks: list[HealthCheck] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                health_checks.append(
-                    HealthCheck(
-                        name=f"check_{i}",
+                error_check = HealthCheck(
+                    name=f"check_{i}",
+                    status=HealthStatus.CRITICAL,
+                    message=f"Health check failed: {result}",
+                    details={"error": str(result)},
+                    timestamp=time.time(),
+                    duration_ms=0,
+                )
+                health_checks.append(error_check)
+                self.check_results[error_check.name] = error_check
+            else:
+                # result is guaranteed to be HealthCheck here
+                if not isinstance(result, HealthCheck):
+                    # This should never happen, but handle gracefully
+                    error_check = HealthCheck(
+                        name=f"check_{i}_type_error",
                         status=HealthStatus.CRITICAL,
-                        message=f"Health check failed: {result}",
-                        details={"error": str(result)},
+                        message="Unexpected result type in health check",
+                        details={"error": f"Expected HealthCheck, got {type(result)}"},
                         timestamp=time.time(),
                         duration_ms=0,
                     )
-                )
-            else:
-                health_checks.append(result)
-                self.check_results[result.name] = result
+                    health_checks.append(error_check)
+                    self.check_results[error_check.name] = error_check
+                else:
+                    health_checks.append(result)
+                    self.check_results[result.name] = result
 
         # Determine overall status
         statuses = [check.status for check in health_checks]

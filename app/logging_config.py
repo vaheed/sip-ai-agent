@@ -101,7 +101,7 @@ def setup_logging() -> None:
     settings = get_settings()
 
     # Configure structlog
-    processors = [
+    processors: list[Any] = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
@@ -138,7 +138,8 @@ def setup_logging() -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Get a structured logger instance."""
-    return structlog.get_logger(name)
+    logger = structlog.get_logger(name)
+    return logger  # type: ignore[no-any-return]
 
 
 def with_correlation_id(correlation_id: str):

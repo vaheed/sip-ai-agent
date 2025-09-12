@@ -10,7 +10,7 @@ import asyncio
 import base64
 import json
 import time
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 import websockets
 from openai import OpenAI
@@ -30,7 +30,7 @@ class OpenAIAgent:
         self.settings = get_settings()
         self.correlation_id = correlation_id
         self.client = OpenAI(api_key=self.settings.openai_api_key)
-        self.ws = None
+        self.ws: Optional[Any] = None
         self.is_active = False
         self.start_time = time.time()
 
@@ -218,6 +218,8 @@ class OpenAIAgent:
             },
         }
 
+        if self.ws is None:
+            raise RuntimeError("WebSocket not connected")
         await self.ws.send(json.dumps(session_update))
 
         log_openai_event(
@@ -239,7 +241,7 @@ class OpenAIAgent:
             ):
                 audio_chunk = await call.audio_callback.get_audio_frame()
 
-                if audio_chunk and self.ws and not self.ws.closed:
+                if audio_chunk and self.ws is not None and not self.ws.closed:
                     frame_start = time.time()
 
                     await self.ws.send(audio_chunk)
@@ -304,7 +306,7 @@ class OpenAIAgent:
             ):
                 audio_chunk = await call.audio_callback.get_audio_frame()
 
-                if audio_chunk and self.ws and not self.ws.closed:
+                if audio_chunk and self.ws is not None and not self.ws.closed:
                     frame_start = time.time()
 
                     # Base64 encode the PCM data
@@ -368,7 +370,7 @@ class OpenAIAgent:
         total_bytes = 0
 
         try:
-            while self.is_active and self.ws and not self.ws.closed:
+            while self.is_active and self.ws is not None and not self.ws.closed:
                 response = await self.ws.recv()
 
                 if isinstance(response, bytes):
@@ -417,7 +419,7 @@ class OpenAIAgent:
         total_bytes = 0
 
         try:
-            while self.is_active and self.ws and not self.ws.closed:
+            while self.is_active and self.ws is not None and not self.ws.closed:
                 raw_msg = await self.ws.recv()
 
                 if not raw_msg:
@@ -502,7 +504,7 @@ class OpenAIAgent:
         """Stop the OpenAI agent."""
         self.is_active = False
 
-        if self.ws and not self.ws.closed:
+        if self.ws is not None and not self.ws.closed:
             asyncio.create_task(self.ws.close())
 
         duration = time.time() - self.start_time

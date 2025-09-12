@@ -157,6 +157,9 @@ class SIPAIAgent:
                     max_retries=max_retries,
                 )
 
+                if self.sip_client is None:
+                    raise SIPRegistrationError("SIP client not initialized")
+
                 await self.sip_client.register()
 
                 # Wait for registration to complete
@@ -271,9 +274,8 @@ class SIPAIAgent:
     def reload_configuration(self) -> None:
         """Reload configuration from environment."""
         try:
-            global settings
-            settings = reload_settings()
-            self.settings = settings
+            new_settings = reload_settings()
+            self.settings = new_settings
 
             self.logger.info("Configuration reloaded successfully")
 
