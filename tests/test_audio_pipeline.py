@@ -14,14 +14,17 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
+
 # Mock PJSIP before importing app modules
 class MockAudioMedia:
     def __init__(self):
         pass
 
+
 class MockPJ:
     AudioMedia = MockAudioMedia
     PJMEDIA_FRAME_TYPE_AUDIO = 1
+
 
 mock_pjsua2 = Mock()
 mock_pjsua2.pj = MockPJ()
@@ -79,7 +82,7 @@ class TestEnhancedAudioCallback:
         """Test backpressure detection and handling."""
         # Simulate backpressure by setting queue size
         audio_callback.audio_queue.qsize.return_value = 150  # Exceed threshold
-        
+
         # Create a mock frame
         mock_frame = Mock()
         mock_frame.type = 1

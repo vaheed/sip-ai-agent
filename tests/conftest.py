@@ -18,9 +18,11 @@ class MockAudioMedia:
     def __init__(self):
         pass
 
+
 class MockPJ:
     AudioMedia = MockAudioMedia
     PJMEDIA_FRAME_TYPE_AUDIO = 1
+
 
 mock_pjsua2 = Mock()
 mock_pjsua2.pj = MockPJ()
@@ -205,14 +207,15 @@ def mock_agent():
     """Create a mock OpenAI agent for testing."""
     with patch("openai_agent.get_settings") as mock_get_settings:
         from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice
-        
+
         mock_settings = Mock()
         mock_settings.openai_mode = OpenAIAPIMode.REALTIME
         mock_settings.openai_model = OpenAIRealtimeModel.GPT_REALTIME.value
         mock_settings.openai_voice = OpenAIVoice.ALLOY
         mock_get_settings.return_value = mock_settings
-        
+
         from openai_agent import OpenAIAgent
+
         agent = OpenAIAgent("test-correlation-id")
         agent.ws = None  # Will be set in individual tests
         agent.is_active = True

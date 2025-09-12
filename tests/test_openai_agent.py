@@ -313,7 +313,7 @@ class TestOpenAIAgentIntegration:
                     # Create a proper async mock that can be awaited
                     async def mock_gather_result():
                         return []
-                    
+
                     mock_gather.return_value = mock_gather_result()
 
                     await agent._start_realtime_agent(mock_call)
