@@ -30,7 +30,7 @@ class OpenAIAgent:
         self.settings = get_settings()
         self.correlation_id = correlation_id
         self.client = OpenAI(api_key=self.settings.openai_api_key)
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.ws: Optional[Any] = None
         self.is_active = False
         self.start_time = time.time()
 
