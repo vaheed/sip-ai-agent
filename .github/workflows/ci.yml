@@ -219,29 +219,8 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
     
-    - name: Debug authentication
-      run: |
-        echo "Using token: ${{ secrets.GHCR_TOKEN != '' && 'GHCR_TOKEN' || 'GITHUB_TOKEN' }}"
-        echo "Repository: ${{ github.repository }}"
-        echo "Actor: ${{ github.actor }}"
-        echo "GHCR_TOKEN exists: ${{ secrets.GHCR_TOKEN != '' }}"
-        echo "GITHUB_TOKEN exists: ${{ secrets.GITHUB_TOKEN != '' }}"
-        
-        # Test authentication with GHCR
-        echo "Testing authentication..."
-        echo "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-    
-    - name: Check package access
-      run: |
-        # Check if we can access the package
-        echo "Checking package access..."
-        curl -H "Authorization: Bearer ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}" \
-             -H "Accept: application/vnd.github.v3+json" \
-             "https://api.github.com/orgs/vaheed/packages/container/sip-ai-agent" || echo "Package not found or no access"
-    
     - name: Build and push Docker image
       run: |
-        # Build and push with proper tagging
         docker buildx build \
           --platform linux/amd64 \
           --tag ghcr.io/${{ github.repository }}:latest \
@@ -249,7 +228,9 @@ jobs:
           --push \
           .
     
-    - name: Update deployment (example)
+    - name: Deployment completed
       run: |
-        echo "Deployment completed for commit ${{ github.sha }}"
-        # Add your deployment logic here
+        echo "✅ Docker image successfully pushed to GitHub Container Registry"
+        echo "📦 Image: ghcr.io/${{ github.repository }}:latest"
+        echo "🏷️  Tag: ghcr.io/${{ github.repository }}:${{ github.sha }}"
+        echo "🔗 Package URL: https://github.com/${{ github.repository }}/pkgs/container/sip-ai-agent"
