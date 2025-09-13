@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIP AI Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        /* Dark mode scrollbar */
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #374151;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #6b7280;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // API client
+        const api = axios.create({
+            baseURL: '/api',
+            timeout: 10000,
+        });
+
+        // Add request interceptor for auth
+        api.interceptors.request.use(
+            (config) => {
+                const token = localStorage.getItem('session_token');
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            (error) => Promise.reject(error)
+        );
+
+        // Add response interceptor for auth errors
+        api.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error.response?.status === 401) {
+                    localStorage.removeItem('session_token');
+                    window.location.reload();
+                }
+                return Promise.reject(error);
+            }
+        );
+
+        // WebSocket connection
+        class WebSocketManager {
+            constructor() {
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.reconnectInterval = 1000;
+                this.listeners = new Set();
+            }
+
+            connect() {
+                try {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws/events`;
+                    this.ws = new WebSocket(wsUrl);
+
+                    this.ws.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.reconnectAttempts = 0;
+                        this.reconnectInterval = 1000;
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.listeners.forEach(callback => callback(data));
+                        } catch (error) {
+                            console.error('Failed to parse WebSocket message:', error);
+                        }
+                    };
+
+                    this.ws.onclose = () => {
+                        console.log('WebSocket disconnected');
+                        this.handleReconnect();
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                } catch (error) {
+                    console.error('Failed to create WebSocket connection:', error);
+                    this.handleReconnect();
+                }
+            }
+
+            handleReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Attempting to reconnect WebSocket (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    setTimeout(() => this.connect(), this.reconnectInterval);
+                    this.reconnectInterval *= 2; // Exponential backoff
+                }
+            }
+
+            addListener(callback) {
+                this.listeners.add(callback);
+            }
+
+            removeListener(callback) {
+                this.listeners.delete(callback);
+            }
+
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                    this.ws = null;
+                }
+            }
+        }
+
+        const wsManager = new WebSocketManager();
+
+        // Login Component
+        function Login({ onLogin }) {
+            const [credentials, setCredentials] = useState({ username: 'admin', password: 'admin123' });
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+
+                try {
+                    const response = await api.post('/auth/login', credentials);
+                    if (response.data.success) {
+                        localStorage.setItem('session_token', response.data.token);
+                        onLogin();
+                    }
+                } catch (error) {
+                    setError(error.response?.data?.detail || 'Login failed');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                    <div className="max-w-md w-full space-y-8">
+                        <div>
+                            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+                                SIP AI Agent
+                            </h2>
+                            <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+                                Sign in to your account
+                            </p>
+                        </div>
+                        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                            <div className="rounded-md shadow-sm -space-y-px">
+                                <div>
+                                    <label htmlFor="username" className="sr-only">Username</label>
+                                    <input
+                                        id="username"
+                                        name="username"
+                                        type="text"
+                                        required
+                                        className="relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                                        placeholder="Username"
+                                        value={credentials.username}
+                                        onChange={(e) => setCredentials({...credentials, username: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="password" className="sr-only">Password</label>
+                                    <input
+                                        id="password"
+                                        name="password"
+                                        type="password"
+                                        required
+                                        className="relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                                        placeholder="Password"
+                                        value={credentials.password}
+                                        onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="text-red-600 dark:text-red-400 text-sm text-center">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? 'Signing in...' : 'Sign in'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Status Card Component
+        function StatusCard({ title, status, value, icon, color = 'blue' }) {
+            const statusColors = {
+                green: 'text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900',
+                red: 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900',
+                blue: 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900',
+                yellow: 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900',
+            };
+
+            return (
+                <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                    <div className="p-5">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${statusColors[color]}`}>
+                                    {icon}
+                                </div>
+                            </div>
+                            <div className="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                                        {title}
+                                    </dt>
+                                    <dd className="flex items-baseline">
+                                        <div className="text-2xl font-semibold text-gray-900 dark:text-white">
+                                            {value}
+                                        </div>
+                                        {status && (
+                                            <div className="ml-2 flex items-baseline text-sm font-semibold">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                    status === 'online' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                                                    status === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' :
+                                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+                                                }`}>
+                                                    {status}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Logs Component
+        function Logs({ logs }) {
+            const logsEndRef = React.useRef(null);
+
+            const scrollToBottom = () => {
+                logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [logs]);
+
+            return (
+                <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
+                    <div className="px-4 py-5 sm:p-6">
+                        <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+                            System Logs
+                        </h3>
+                        <div className="bg-gray-900 text-green-400 p-4 rounded-lg h-64 overflow-y-auto custom-scrollbar font-mono text-sm">
+                            {logs.map((log, index) => (
+                                <div key={index} className="mb-1">
+                                    {log}
+                                </div>
+                            ))}
+                            <div ref={logsEndRef} />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Call History Component
+        function CallHistory({ calls, onExport }) {
+            const formatDuration = (duration) => {
+                if (!duration) return '-';
+                const minutes = Math.floor(duration / 60);
+                const seconds = Math.floor(duration % 60);
+                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            };
+
+            const formatTimestamp = (timestamp) => {
+                return new Date(timestamp * 1000).toLocaleString();
+            };
+
+            return (
+                <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
+                    <div className="px-4 py-5 sm:p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                Call History
+                            </h3>
+                            <button
+                                onClick={onExport}
+                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                            >
+                                Export CSV
+                            </button>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Call ID
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Start Time
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            End Time
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Duration
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Status
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    {calls.map((call) => (
+                                        <tr key={call.call_id}>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                                {call.call_id}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                                {formatTimestamp(call.start_time)}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                                {call.end_time ? formatTimestamp(call.end_time) : '-'}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                                {formatDuration(call.duration)}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                    call.status === 'completed' 
+                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                                                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+                                                }`}>
+                                                    {call.status}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Configuration Component
+        function Configuration({ config, onSave, onReload, loading }) {
+            const [formData, setFormData] = useState(config);
+            const [saving, setSaving] = useState(false);
+
+            useEffect(() => {
+                setFormData(config);
+            }, [config]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                try {
+                    await onSave(formData);
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            const handleInputChange = (key, value) => {
+                setFormData(prev => ({ ...prev, [key]: value }));
+            };
+
+            return (
+                <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
+                    <div className="px-4 py-5 sm:p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                Configuration
+                            </h3>
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={onReload}
+                                    disabled={loading}
+                                    className="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm leading-4 font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                >
+                                    Reload
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* SIP Configuration */}
+                                <div className="space-y-4">
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white">SIP Settings</h4>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            SIP Domain
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.SIP_DOMAIN || ''}
+                                            onChange={(e) => handleInputChange('SIP_DOMAIN', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            SIP User
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.SIP_USER || ''}
+                                            onChange={(e) => handleInputChange('SIP_USER', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            SIP Password
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={formData.SIP_PASS || ''}
+                                            onChange={(e) => handleInputChange('SIP_PASS', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* OpenAI Configuration */}
+                                <div className="space-y-4">
+                                    <h4 className="text-md font-medium text-gray-900 dark:text-white">OpenAI Settings</h4>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            API Key
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={formData.OPENAI_API_KEY || ''}
+                                            onChange={(e) => handleInputChange('OPENAI_API_KEY', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Agent ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.AGENT_ID || ''}
+                                            onChange={(e) => handleInputChange('AGENT_ID', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Mode
+                                        </label>
+                                        <select
+                                            value={formData.OPENAI_MODE || 'legacy'}
+                                            onChange={(e) => handleInputChange('OPENAI_MODE', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        >
+                                            <option value="legacy">Legacy</option>
+                                            <option value="realtime">Realtime</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Voice
+                                        </label>
+                                        <select
+                                            value={formData.OPENAI_VOICE || 'alloy'}
+                                            onChange={(e) => handleInputChange('OPENAI_VOICE', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        >
+                                            <option value="alloy">Alloy</option>
+                                            <option value="echo">Echo</option>
+                                            <option value="fable">Fable</option>
+                                            <option value="onyx">Onyx</option>
+                                            <option value="nova">Nova</option>
+                                            <option value="shimmer">Shimmer</option>
+                                            <option value="cedar">Cedar</option>
+                                            <option value="marin">Marin</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Temperature
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            max="2"
+                                            value={formData.OPENAI_TEMPERATURE || '0.3'}
+                                            onChange={(e) => handleInputChange('OPENAI_TEMPERATURE', e.target.value)}
+                                            className="mt-1 block w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4">
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                >
+                                    {saving ? 'Saving...' : 'Save Configuration'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Main Dashboard Component
+        function Dashboard() {
+            const [darkMode, setDarkMode] = useState(false);
+            const [systemStatus, setSystemStatus] = useState(null);
+            const [logs, setLogs] = useState([]);
+            const [callHistory, setCallHistory] = useState([]);
+            const [config, setConfig] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState('');
+
+            // Toggle dark mode
+            const toggleDarkMode = () => {
+                setDarkMode(!darkMode);
+                document.documentElement.classList.toggle('dark');
+            };
+
+            // Load initial data
+            const loadData = useCallback(async () => {
+                try {
+                    const [statusRes, logsRes, historyRes, configRes] = await Promise.all([
+                        api.get('/status'),
+                        api.get('/logs'),
+                        api.get('/call_history'),
+                        api.get('/config')
+                    ]);
+
+                    setSystemStatus(statusRes.data);
+                    setLogs(logsRes.data.logs || []);
+                    setCallHistory(historyRes.data || []);
+                    setConfig(configRes.data.config || {});
+                } catch (error) {
+                    setError('Failed to load data: ' + (error.response?.data?.detail || error.message));
+                } finally {
+                    setLoading(false);
+                }
+            }, []);
+
+            // Save configuration
+            const saveConfig = async (newConfig) => {
+                try {
+                    await api.post('/config', { config: newConfig });
+                    setConfig(newConfig);
+                    // Show success message (you could add a toast notification here)
+                } catch (error) {
+                    throw new Error(error.response?.data?.detail || 'Failed to save configuration');
+                }
+            };
+
+            // Reload configuration
+            const reloadConfig = async () => {
+                try {
+                    await api.post('/config/reload');
+                    await loadData();
+                } catch (error) {
+                    setError('Failed to reload configuration: ' + (error.response?.data?.detail || error.message));
+                }
+            };
+
+            // Export call history
+            const exportCallHistory = async () => {
+                try {
+                    const response = await api.get('/call_history/csv', { responseType: 'blob' });
+                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', 'call_history.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                } catch (error) {
+                    setError('Failed to export call history: ' + (error.response?.data?.detail || error.message));
+                }
+            };
+
+            // Handle WebSocket messages
+            const handleWebSocketMessage = useCallback((data) => {
+                if (data.type === 'system_update') {
+                    setSystemStatus(prev => ({
+                        ...prev,
+                        ...data.data
+                    }));
+                }
+            }, []);
+
+            // Initialize
+            useEffect(() => {
+                loadData();
+                
+                // Connect to WebSocket
+                wsManager.connect();
+                wsManager.addListener(handleWebSocketMessage);
+
+                // Refresh data every 30 seconds
+                const interval = setInterval(loadData, 30000);
+
+                return () => {
+                    clearInterval(interval);
+                    wsManager.removeListener(handleWebSocketMessage);
+                };
+            }, [loadData, handleWebSocketMessage]);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="mt-4 text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                    {/* Header */}
+                    <header className="bg-white dark:bg-gray-800 shadow">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center py-6">
+                                <div className="flex items-center">
+                                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                                        SIP AI Agent Dashboard
+                                    </h1>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    <button
+                                        onClick={toggleDarkMode}
+                                        className="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    >
+                                        {darkMode ? '☀️' : '🌙'}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            localStorage.removeItem('session_token');
+                                            window.location.reload();
+                                        }}
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                        {error && (
+                            <div className="mb-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-md p-4">
+                                <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
+                            </div>
+                        )}
+
+                        {/* Status Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            <StatusCard
+                                title="SIP Registration"
+                                status={systemStatus?.sip_registered ? 'online' : 'offline'}
+                                value={systemStatus?.sip_registered ? 'Registered' : 'Not Registered'}
+                                icon="📞"
+                                color={systemStatus?.sip_registered ? 'green' : 'red'}
+                            />
+                            <StatusCard
+                                title="Active Calls"
+                                value={systemStatus?.active_calls?.length || 0}
+                                icon="📱"
+                                color="blue"
+                            />
+                            <StatusCard
+                                title="API Tokens Used"
+                                value={systemStatus?.api_tokens_used || 0}
+                                icon="🔑"
+                                color="yellow"
+                            />
+                            <StatusCard
+                                title="Uptime"
+                                value={systemStatus?.uptime_seconds ? `${Math.floor(systemStatus.uptime_seconds / 3600)}h ${Math.floor((systemStatus.uptime_seconds % 3600) / 60)}m` : '0h 0m'}
+                                icon="⏱️"
+                                color="blue"
+                            />
+                        </div>
+
+                        {/* Main Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Configuration */}
+                            <Configuration
+                                config={config}
+                                onSave={saveConfig}
+                                onReload={reloadConfig}
+                                loading={loading}
+                            />
+
+                            {/* Logs */}
+                            <Logs logs={logs} />
+                        </div>
+
+                        {/* Call History */}
+                        <div className="mt-6">
+                            <CallHistory
+                                calls={callHistory}
+                                onExport={exportCallHistory}
+                            />
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        // Main App Component
+        function App() {
+            const [authenticated, setAuthenticated] = useState(false);
+            const [checkingAuth, setCheckingAuth] = useState(true);
+
+            useEffect(() => {
+                const checkAuth = async () => {
+                    const token = localStorage.getItem('session_token');
+                    if (token) {
+                        try {
+                            await api.get('/auth/status');
+                            setAuthenticated(true);
+                        } catch (error) {
+                            localStorage.removeItem('session_token');
+                        }
+                    }
+                    setCheckingAuth(false);
+                };
+
+                checkAuth();
+            }, []);
+
+            if (checkingAuth) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    </div>
+                );
+            }
+
+            return authenticated ? <Dashboard /> : <Login onLogin={() => setAuthenticated(true)} />;
+        }
+
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

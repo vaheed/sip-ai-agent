@@ -18,6 +18,11 @@ flask>=2.2.5
 structlog>=23.0.0
 prometheus-client>=0.17.0
 
+# Web UI Backend
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
 # Testing
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
