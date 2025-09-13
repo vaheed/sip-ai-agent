@@ -41,9 +41,6 @@ RUN sed -i '/pjsua2==2.12/d' requirements.txt && \
 # Copy application code
 COPY app/ .
 
-# Copy test configuration script
-COPY test_config.py .
-
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app && \
     chown -R app:app /app

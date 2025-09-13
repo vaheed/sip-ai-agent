@@ -14,7 +14,6 @@ This is the new main agent that integrates all the enhanced modules:
 import asyncio
 import signal
 import sys
-import time
 from typing import Optional
 
 from config import get_settings, reload_settings
@@ -27,7 +26,8 @@ from logging_config import (
 )
 from metrics import get_metrics
 from monitor import monitor
-from openai_agent import OpenAIAgent
+
+# OpenAIAgent is imported by SIPClient when needed
 from sip_client import SIPClient, SIPRegistrationError
 
 
