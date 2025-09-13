@@ -3,32 +3,40 @@
 [![Coverage](https://codecov.io/gh/vaheed/sip-ai-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/vaheed/sip-ai-agent)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-# SIP AI Agent - Enhanced Voice Assistant
+# SIP AI Agent - Enterprise Voice Assistant Platform
 
 ## Overview
 
-This repository contains an enhanced Python application that registers as a SIP extension
+This repository contains a comprehensive Python application that registers as a SIP extension
 on your PBX and connects callers to an OpenAI voice assistant with enterprise-grade
-reliability, observability, and performance. It supports both the legacy `/v1/audio/speech` 
-WebSocket API and the newer realtime API for ultra‑low‑latency speech‑to‑speech interactions.
+reliability, observability, performance, and a modern web-based management interface. 
+It supports both the legacy `/v1/audio/speech` WebSocket API and the newer realtime API 
+for ultra‑low‑latency speech‑to‑speech interactions.
 
-### Key Features
+### 🚀 Key Features
 
 - **🔄 SIP Stack Hardening**: Automatic reconnection, backoff strategies, NAT traversal (STUN/TURN/ICE)
 - **🎵 Enhanced Audio Pipeline**: 16-bit PCM @ 16kHz with backpressure handling and graceful shutdown
 - **🤖 OpenAI Integration**: Full realtime API support with session configuration and voice validation
 - **📊 Comprehensive Observability**: Structured logging, correlation IDs, Prometheus metrics, health checks
-- **🔧 Production Ready**: Typed configuration, comprehensive testing, Docker support, CI/CD pipeline
-- **🛡️ Security**: SRTP encryption, secure defaults, security scanning
+- **🌐 Modern Web Dashboard**: FastAPI backend with React frontend for real-time monitoring and management
+- **📞 Call History & Analytics**: Complete call tracking with CSV export and performance analytics
+- **⚙️ Configuration Management**: Web-based configuration editor with live reload capabilities
+- **🔐 Authentication & Security**: Session-based auth, SRTP encryption, secure defaults, security scanning
+- **🐳 Production Ready**: Docker containerization, CI/CD pipelines, automated testing, quality gates
+- **🎨 UI/UX Quality System**: ESLint, Stylelint, accessibility testing, visual regression, Lighthouse CI
 
-### Enhanced Features
+### 🌟 Enhanced Features
 
 * **Robust SIP Client**: PJSIP-based with automatic reconnection, NAT traversal, SRTP encryption
 * **Advanced Audio Processing**: 16-bit PCM @ 16kHz with backpressure handling and dropout detection
 * **OpenAI Realtime API**: Full support with session configuration, voice validation, and token tracking
 * **Enterprise Monitoring**: Structured JSON logging, correlation IDs, Prometheus metrics, health checks
+* **Web Management Interface**: Real-time dashboard, call history, configuration editor, system monitoring
+* **Call Analytics**: Comprehensive call tracking, statistics, CSV export, audio quality metrics
 * **Production Deployment**: Docker support, health checks, graceful shutdown, security scanning
 * **Developer Experience**: Typed configuration, comprehensive testing, pre-commit hooks, CI/CD pipeline
+* **Quality Assurance**: Automated UI/UX testing, accessibility compliance, performance monitoring
 
 ## Architecture
 
@@ -39,31 +47,61 @@ graph TD
     A[agent.py - SIPAIAgent] --> B[SIPClient]
     A --> C[HealthMonitor]
     A --> D[MetricsCollector]
-    A --> E[Monitor]
+    A --> E[CallHistoryManager]
     B --> F[OpenAIAgent]
     F --> G[OpenAI API]
     
-    H[User calls SIP] --> B
+    H[Web Dashboard] --> I[FastAPI Backend]
+    I --> J[WebSocket Events]
+    I --> K[Call History API]
+    I --> L[Config Management]
+    I --> M[Authentication]
+    
+    H --> B
+    H --> C
+    H --> D
+    H --> E
+    
+    N[User calls SIP] --> B
     B --> F
-    F --> I[Process Audio]
-    I --> G
-    G --> J[AI Response]
-    J --> F
-    F --> K[Audio Output]
-    K --> B
-    B --> L[Caller hears response]
+    F --> O[Process Audio]
+    O --> G
+    G --> P[AI Response]
+    P --> F
+    F --> Q[Audio Output]
+    Q --> B
+    B --> R[Caller hears response]
+    
+    B --> E
+    E --> K
 ```
 
 ### Component Overview
 
+#### Core SIP Components
 - **`agent.py`** - Main application controller and orchestrator
 - **`sip_client.py`** - SIP protocol handling and call management
 - **`openai_agent.py`** - OpenAI API integration and audio processing
-- **`health.py`** - System health monitoring and diagnostics
-- **`metrics.py`** - Prometheus metrics collection
-- **`monitor.py`** - Web dashboard and monitoring interface
 - **`config.py`** - Configuration management with Pydantic
 - **`logging_config.py`** - Structured logging with correlation IDs
+
+#### Monitoring & Analytics
+- **`health.py`** - System health monitoring and diagnostics
+- **`metrics.py`** - Prometheus metrics collection
+- **`monitor.py`** - System monitoring and configuration management
+- **`call_history.py`** - Call tracking, analytics, and persistence
+
+#### Web Interface
+- **`web_backend.py`** - FastAPI REST API and WebSocket server
+- **`start_web_ui.py`** - Web UI startup and orchestration
+- **`web/index.html`** - React-based frontend dashboard
+- **`web/package.json`** - Frontend dependencies and build tools
+
+#### Development & Quality
+- **`demo_calls.py`** - Demo data generation for testing
+- **`scripts/version.py`** - Semantic versioning and release management
+- **`scripts/deploy.sh`** - Deployment automation
+- **`.github/workflows/`** - CI/CD pipelines for Docker and UI/UX quality
 
 ## Requirements
 
@@ -122,14 +160,14 @@ graph TD
 
    See `env.template` for a comprehensive list of all available configuration options.
 
-3. **Build and start the container**
+3. **Build and start the containers**
 
    ```bash
    docker compose up --build
    ```
 
-   This builds PJSIP, installs dependencies, and starts the enhanced agent with:
-   - **Monitoring Dashboard**: `http://localhost:8080`
+   This builds PJSIP, installs dependencies, and starts both the SIP agent and web dashboard:
+   - **Web Dashboard**: `http://localhost:8080` (Login: admin/admin123)
    - **Health Checks**: `http://localhost:8080/healthz`
    - **Prometheus Metrics**: `http://localhost:9090/metrics`
    - **SIP Signaling**: `5060/udp`
@@ -148,28 +186,57 @@ graph TD
    curl http://localhost:8080/healthz
    ```
 
-5. **Access the monitoring dashboard**
+5. **Access the web dashboard**
 
-   Open your browser to `http://localhost:8080` for:
-   - SIP registration status
-   - Active calls and call history
-   - Token usage and performance metrics
-   - Real-time logs with correlation IDs
-   - Configuration editor (requires restart after changes)
+   Open your browser to `http://localhost:8080` and login with:
+   - **Username**: admin
+   - **Password**: admin123
 
-## Dashboard
+   The dashboard provides comprehensive monitoring and management capabilities.
 
-The built‑in dashboard provides a convenient way to monitor and manage the
-agent:
+## 🌐 Web Dashboard
 
-* **Status** — Shows whether the SIP account is registered, lists active
-  calls and displays the total number of tokens used.
-* **Logs** — Streams recent log entries so you can watch events in real time.
-* **Call history** — Lists each call’s start time, end time and duration,
-  enabling you to visualise call flow.
-* **Configuration editor** — Presents the contents of your `.env` file in a
-  form.  Update values and click save to write them back to disk.  A container
-  restart is required to apply changes.
+The modern web dashboard provides a comprehensive interface for monitoring and managing the SIP AI Agent:
+
+### 🎯 Live Status Monitoring
+* **SIP Registration Status** — Real-time SIP registration state and connection health
+* **Active Calls** — Current active call count with detailed call information
+* **API Token Usage** — OpenAI API token consumption tracking and cost analytics
+* **System Uptime** — Service uptime, performance metrics, and resource usage
+* **Real-time Logs** — Live log streaming with WebSocket, correlation IDs, and filtering
+
+### 📞 Call History & Analytics
+* **Call Tracking** — Complete call history with start/end times, duration, and status
+* **Duration Analytics** — Call duration tracking, success rates, and performance statistics
+* **CSV Export** — Export call history data for analysis and reporting
+* **Audio Quality Metrics** — Packet loss, jitter, latency, and MOS scores
+* **Token & Cost Tracking** — Per-call token usage and cost analysis
+
+### ⚙️ Configuration Management
+* **Form-based Editor** — Easy configuration editing for all SIP and OpenAI settings
+* **Live Validation** — Input validation and error handling for configuration changes
+* **Persistent Storage** — Changes saved directly to `.env` file
+* **Safe Reload** — Configuration reload endpoint with restart notifications
+* **Environment Variables** — Support for all SIP, OpenAI, audio, and monitoring settings
+
+### 🔐 Authentication & Security
+* **Session Management** — HTTP-only cookies with secure defaults
+* **Protected Routes** — All admin functions require authentication
+* **CSRF Protection** — SameSite cookie configuration
+* **Default Credentials** — admin/admin123 (change in production)
+
+### 🎨 Modern UI/UX
+* **Dark/Light Theme** — Toggle between themes with persistence
+* **Responsive Design** — Works on desktop, tablet, and mobile devices
+* **Tailwind CSS** — Modern, clean styling with professional appearance
+* **Real-time Updates** — WebSocket-powered live updates for all metrics
+* **Intuitive Navigation** — Easy-to-use interface with clear information hierarchy
+
+### 📊 Demo Capabilities
+* **Demo Mode** — Run with simulated calls for testing and demonstration
+* **Historical Data** — Generate realistic call history for development
+* **Live Simulation** — Continuous call generation with realistic metrics
+* **Token Usage Simulation** — Realistic OpenAI token consumption patterns
 
 ## FreePBX Integration
 
@@ -263,11 +330,38 @@ make dev
 
 # Check health
 make health
+
+# Web UI development
+make web-ui          # Start web UI development server
+make web-demo        # Start with demo calls
+make web-build       # Build web UI container
+make ui-lint         # Run UI/UX linting (ESLint + Stylelint)
+make ui-test         # Run UI/UX tests (unit + E2E)
+make ui-accessibility # Run accessibility tests
+make ui-lighthouse   # Run Lighthouse performance tests
+make ui-storybook    # Build and validate Storybook
+make ui-quality      # Run all UI/UX quality checks
+
+# Version management
+make version         # Show current version
+make version-bump-patch  # Bump patch version
+make version-bump-minor  # Bump minor version
+make version-bump-major  # Bump major version
+make version-tag     # Create git tag for current version
+make release         # Create release with changelog
+
+# Deployment
+make deploy          # Deploy to production
+make deploy-staging  # Deploy to staging
+make deploy-status   # Check deployment status
+make deploy-logs     # View deployment logs
 ```
 
 ### Code Quality
 
-This project uses:
+This project uses comprehensive quality assurance tools:
+
+#### Python Quality
 - **Black** for code formatting
 - **isort** for import sorting
 - **flake8** for linting
@@ -275,6 +369,92 @@ This project uses:
 - **pytest** for testing
 - **pre-commit** for git hooks
 - **bandit** and **safety** for security scanning
+
+#### UI/UX Quality System
+- **ESLint** with React/TypeScript rules and naming conventions
+- **Stylelint** with BEM/utility policies and design token validation
+- **Playwright** for E2E testing, visual regression, and accessibility
+- **Vitest** for unit and interaction testing
+- **Storybook** for component documentation and testing
+- **Lighthouse CI** for performance, SEO, PWA, and accessibility scores
+- **pa11y** and **axe-core** for automated accessibility testing
+- **Percy** for visual regression testing (optional)
+
+#### Design System
+- **Design Tokens** with JSON schema validation
+- **Component Library** with Storybook documentation
+- **Accessibility Compliance** with WCAG 2.1 AA standards
+- **Performance Monitoring** with Lighthouse CI score gates
+
+## 🚀 CI/CD & Deployment
+
+The project includes comprehensive CI/CD pipelines for automated testing, building, and deployment:
+
+### GitHub Actions Workflows
+
+#### 🐳 Docker Deployment Pipeline
+- **Multi-platform builds** (linux/amd64, linux/arm64)
+- **Automated versioning** with semantic versioning
+- **Security scanning** with Trivy vulnerability scanner
+- **Registry publishing** to GitHub Container Registry
+- **Branch-based tagging** for development and production releases
+
+#### 🎨 UI/UX Quality Pipeline
+- **Code style validation** with ESLint and Stylelint
+- **Design token validation** with JSON schema checking
+- **Accessibility testing** with axe-core and pa11y
+- **Visual regression testing** with Playwright screenshots
+- **Performance testing** with Lighthouse CI
+- **Component testing** with Storybook build validation
+
+### 🏷️ Version Management
+
+The project uses semantic versioning with automated release management:
+
+```bash
+# Version management commands
+make version                    # Show current version
+make version-bump-patch         # Bump patch version (1.0.0 → 1.0.1)
+make version-bump-minor         # Bump minor version (1.0.0 → 1.1.0)
+make version-bump-major         # Bump major version (1.0.0 → 2.0.0)
+make version-tag                # Create git tag for current version
+make release                    # Create release with changelog
+```
+
+### 🚢 Deployment Options
+
+#### Docker Deployment
+```bash
+# Production deployment
+make deploy                     # Deploy to production environment
+make deploy-staging            # Deploy to staging environment
+make deploy-status             # Check deployment status
+make deploy-logs               # View deployment logs
+make deploy-rollback           # Rollback to previous version
+```
+
+#### Manual Deployment
+```bash
+# Build and run containers
+docker compose -f docker-compose.prod.yml up --build -d
+
+# Check deployment status
+docker compose ps
+docker compose logs -f
+
+# Health check
+curl http://localhost:8080/healthz
+```
+
+### 📊 Monitoring & Observability
+
+The deployment includes comprehensive monitoring:
+
+- **Health Checks**: Container orchestration support
+- **Prometheus Metrics**: Performance and business metrics
+- **Structured Logging**: JSON logs with correlation IDs
+- **Web Dashboard**: Real-time monitoring and management
+- **Alerting**: Integration with monitoring systems
 
 ## Troubleshooting
 
