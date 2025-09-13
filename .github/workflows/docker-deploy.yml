@@ -45,6 +45,8 @@ jobs:
           type=semver,pattern={{major}}
           type=raw,value=latest,enable={{is_default_branch}}
           type=sha,prefix={{branch}}-
+        flavor: |
+          latest=false
 
     - name: Build and push SIP Agent Docker image
       uses: docker/build-push-action@v5
@@ -57,16 +59,30 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Extract metadata for Web UI
+      id: meta-web
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix={{branch}}-
+        flavor: |
+          latest=false
+
     - name: Build and push Web UI Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile.web
         push: true
-        tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ steps.meta.outputs.version }}
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:latest
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: ${{ steps.meta-web.outputs.tags }}
+        labels: ${{ steps.meta-web.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -78,12 +94,16 @@ jobs:
         echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Web UI Images:" >> $GITHUB_STEP_SUMMARY
-        echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-        echo "- ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:latest" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta-web.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Registry:" >> $GITHUB_STEP_SUMMARY
         echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
         echo "- Repository: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Info:" >> $GITHUB_STEP_SUMMARY
+        echo "- Version: ${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
   security-scan:
     runs-on: ubuntu-latest

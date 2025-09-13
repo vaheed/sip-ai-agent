@@ -1,0 +1,103 @@
+{
+  "colors": {
+    "primary": {
+      "50": { "value": "#eff6ff", "type": "color" },
+      "100": { "value": "#dbeafe", "type": "color" },
+      "200": { "value": "#bfdbfe", "type": "color" },
+      "300": { "value": "#93c5fd", "type": "color" },
+      "400": { "value": "#60a5fa", "type": "color" },
+      "500": { "value": "#3b82f6", "type": "color" },
+      "600": { "value": "#2563eb", "type": "color" },
+      "700": { "value": "#1d4ed8", "type": "color" },
+      "800": { "value": "#1e40af", "type": "color" },
+      "900": { "value": "#1e3a8a", "type": "color" }
+    },
+    "gray": {
+      "50": { "value": "#f9fafb", "type": "color" },
+      "100": { "value": "#f3f4f6", "type": "color" },
+      "200": { "value": "#e5e7eb", "type": "color" },
+      "300": { "value": "#d1d5db", "type": "color" },
+      "400": { "value": "#9ca3af", "type": "color" },
+      "500": { "value": "#6b7280", "type": "color" },
+      "600": { "value": "#4b5563", "type": "color" },
+      "700": { "value": "#374151", "type": "color" },
+      "800": { "value": "#1f2937", "type": "color" },
+      "900": { "value": "#111827", "type": "color" }
+    },
+    "success": {
+      "50": { "value": "#f0fdf4", "type": "color" },
+      "500": { "value": "#22c55e", "type": "color" },
+      "600": { "value": "#16a34a", "type": "color" },
+      "700": { "value": "#15803d", "type": "color" }
+    },
+    "warning": {
+      "50": { "value": "#fffbeb", "type": "color" },
+      "500": { "value": "#f59e0b", "type": "color" },
+      "600": { "value": "#d97706", "type": "color" },
+      "700": { "value": "#b45309", "type": "color" }
+    },
+    "error": {
+      "50": { "value": "#fef2f2", "type": "color" },
+      "500": { "value": "#ef4444", "type": "color" },
+      "600": { "value": "#dc2626", "type": "color" },
+      "700": { "value": "#b91c1c", "type": "color" }
+    }
+  },
+  "spacing": {
+    "xs": { "value": "0.25rem", "type": "spacing" },
+    "sm": { "value": "0.5rem", "type": "spacing" },
+    "md": { "value": "1rem", "type": "spacing" },
+    "lg": { "value": "1.5rem", "type": "spacing" },
+    "xl": { "value": "2rem", "type": "spacing" },
+    "2xl": { "value": "3rem", "type": "spacing" },
+    "3xl": { "value": "4rem", "type": "spacing" }
+  },
+  "typography": {
+    "fontFamily": {
+      "sans": { "value": "Inter, system-ui, sans-serif", "type": "fontFamily" },
+      "mono": { "value": "JetBrains Mono, monospace", "type": "fontFamily" }
+    },
+    "fontSize": {
+      "xs": { "value": "0.75rem", "type": "fontSize" },
+      "sm": { "value": "0.875rem", "type": "fontSize" },
+      "base": { "value": "1rem", "type": "fontSize" },
+      "lg": { "value": "1.125rem", "type": "fontSize" },
+      "xl": { "value": "1.25rem", "type": "fontSize" },
+      "2xl": { "value": "1.5rem", "type": "fontSize" },
+      "3xl": { "value": "1.875rem", "type": "fontSize" },
+      "4xl": { "value": "2.25rem", "type": "fontSize" }
+    },
+    "fontWeight": {
+      "normal": { "value": "400", "type": "fontWeight" },
+      "medium": { "value": "500", "type": "fontWeight" },
+      "semibold": { "value": "600", "type": "fontWeight" },
+      "bold": { "value": "700", "type": "fontWeight" }
+    },
+    "lineHeight": {
+      "tight": { "value": "1.25", "type": "lineHeight" },
+      "normal": { "value": "1.5", "type": "lineHeight" },
+      "relaxed": { "value": "1.75", "type": "lineHeight" }
+    }
+  },
+  "borderRadius": {
+    "none": { "value": "0", "type": "borderRadius" },
+    "sm": { "value": "0.125rem", "type": "borderRadius" },
+    "md": { "value": "0.375rem", "type": "borderRadius" },
+    "lg": { "value": "0.5rem", "type": "borderRadius" },
+    "xl": { "value": "0.75rem", "type": "borderRadius" },
+    "full": { "value": "9999px", "type": "borderRadius" }
+  },
+  "shadow": {
+    "sm": { "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "type": "boxShadow" },
+    "md": { "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)", "type": "boxShadow" },
+    "lg": { "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)", "type": "boxShadow" },
+    "xl": { "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "type": "boxShadow" }
+  },
+  "breakpoints": {
+    "sm": { "value": "640px", "type": "breakpoint" },
+    "md": { "value": "768px", "type": "breakpoint" },
+    "lg": { "value": "1024px", "type": "breakpoint" },
+    "xl": { "value": "1280px", "type": "breakpoint" },
+    "2xl": { "value": "1536px", "type": "breakpoint" }
+  }
+}

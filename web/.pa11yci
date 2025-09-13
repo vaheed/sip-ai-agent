@@ -1,0 +1,39 @@
+{
+  "defaults": {
+    "timeout": 20000,
+    "wait": 2000,
+    "chromeLaunchConfig": {
+      "args": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu"
+      ]
+    },
+    "standard": "WCAG2AA",
+    "threshold": 5,
+    "includeWarnings": false,
+    "includeNotices": false
+  },
+  "urls": [
+    {
+      "url": "http://localhost:8080",
+      "screenCapture": "pa11y-screenshots/homepage.png"
+    },
+    {
+      "url": "http://localhost:8080/dashboard",
+      "screenCapture": "pa11y-screenshots/dashboard.png"
+    },
+    {
+      "url": "http://localhost:8080/call-history",
+      "screenCapture": "pa11y-screenshots/call-history.png"
+    },
+    {
+      "url": "http://localhost:8080/config",
+      "screenCapture": "pa11y-screenshots/config.png"
+    }
+  ]
+}

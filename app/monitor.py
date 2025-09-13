@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# import asyncio  # unused
 import os
 import threading
 import time

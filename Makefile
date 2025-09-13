@@ -213,3 +213,28 @@ deploy-stop: ## Stop all services
 
 deploy-rollback: ## Rollback to previous version
 	./scripts/deploy.sh rollback
+
+# UI/UX Quality targets
+ui-lint: ## Run UI/UX linting (ESLint + Stylelint)
+	cd web && npm run lint && npm run stylelint
+
+ui-test: ## Run UI/UX tests (unit + E2E)
+	cd web && npm run test && npm run test:e2e
+
+ui-accessibility: ## Run accessibility tests
+	cd web && npm run a11y
+
+ui-lighthouse: ## Run Lighthouse performance tests
+	cd web && npm run lighthouse
+
+ui-storybook: ## Build and validate Storybook
+	cd web && npm run build-storybook
+
+ui-quality: ## Run all UI/UX quality checks
+	cd web && npm run quality
+
+ui-dev: ## Start UI development server
+	cd web && npm run dev
+
+ui-build: ## Build UI for production
+	cd web && npm run build
