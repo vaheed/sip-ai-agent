@@ -1,5 +1,6 @@
 # SIP client dependencies
-pjsua2==2.12
+# Note: pjsua2 requires compilation and is built separately in Docker
+# pjsua2==2.12  # Uncomment for local development with SIP functionality
 pyaudio==0.2.13
 pydub==0.25.1
 websockets>=11.0.3,<16.0.0
@@ -30,3 +31,7 @@ isort>=5.12.0
 mypy>=1.0.0
 flake8>=6.0.0
 pre-commit>=3.0.0
+
+# Security and quality tools
+bandit>=1.7.5
+safety>=2.3.0
