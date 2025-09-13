@@ -192,7 +192,7 @@ class EnhancedCall(pj.Call):
 
     def _start_openai_agent(self):
         """Start the OpenAI agent in a separate thread."""
-        from agent import OpenAIAgent  # Import here to avoid circular imports
+        from openai_agent import OpenAIAgent  # Import here to avoid circular imports
 
         try:
             agent = OpenAIAgent(self.correlation_id)

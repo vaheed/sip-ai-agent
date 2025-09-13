@@ -30,6 +30,41 @@ WebSocket API and the newer realtime API for ultra‑low‑latency speech‑to�
 * **Production Deployment**: Docker support, health checks, graceful shutdown, security scanning
 * **Developer Experience**: Typed configuration, comprehensive testing, pre-commit hooks, CI/CD pipeline
 
+## Architecture
+
+The SIP AI Agent follows a modular architecture with clear separation of concerns:
+
+```mermaid
+graph TD
+    A[agent.py - SIPAIAgent] --> B[SIPClient]
+    A --> C[HealthMonitor]
+    A --> D[MetricsCollector]
+    A --> E[Monitor]
+    B --> F[OpenAIAgent]
+    F --> G[OpenAI API]
+    
+    H[User calls SIP] --> B
+    B --> F
+    F --> I[Process Audio]
+    I --> G
+    G --> J[AI Response]
+    J --> F
+    F --> K[Audio Output]
+    K --> B
+    B --> L[Caller hears response]
+```
+
+### Component Overview
+
+- **`agent.py`** - Main application controller and orchestrator
+- **`sip_client.py`** - SIP protocol handling and call management
+- **`openai_agent.py`** - OpenAI API integration and audio processing
+- **`health.py`** - System health monitoring and diagnostics
+- **`metrics.py`** - Prometheus metrics collection
+- **`monitor.py`** - Web dashboard and monitoring interface
+- **`config.py`** - Configuration management with Pydantic
+- **`logging_config.py`** - Structured logging with correlation IDs
+
 ## Requirements
 
 * **PBX System**: Asterisk-based PBX (FreePBX or VICIdial) with an extension configured

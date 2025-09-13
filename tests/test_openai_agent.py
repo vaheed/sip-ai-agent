@@ -7,13 +7,13 @@ import base64
 import json
 import os
 import sys
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-from unittest.mock import AsyncMock, Mock, patch
 
-from config import OpenAIAPIMode, OpenAIVoice
+from config import OpenAIAPIMode
 from openai_agent import OpenAIAgent
 
 

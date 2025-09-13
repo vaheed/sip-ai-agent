@@ -2,12 +2,9 @@
 Tests for audio pipeline functionality.
 """
 
-import asyncio
 import os
-import random
 import struct
 import sys
-import tempfile
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -30,9 +27,7 @@ mock_pjsua2 = Mock()
 mock_pjsua2.pj = MockPJ()
 sys.modules["pjsua2"] = mock_pjsua2
 
-from config import get_settings
 from openai_agent import OpenAIAgent
-from sip_client import EnhancedAudioCallback
 
 
 class TestEnhancedAudioCallback:
