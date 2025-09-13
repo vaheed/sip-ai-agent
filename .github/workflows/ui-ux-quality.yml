@@ -327,7 +327,30 @@ jobs:
         all_passed=true
         
         for job in "${jobs[@]}"; do
-          status="${{ needs.$job.result }}"
+          case "$job" in
+            "code-style")
+              status="${{ needs.code-style.result }}"
+              ;;
+            "accessibility")
+              status="${{ needs.accessibility.result }}"
+              ;;
+            "visual-regression")
+              status="${{ needs.visual-regression.result }}"
+              ;;
+            "lighthouse")
+              status="${{ needs.lighthouse.result }}"
+              ;;
+            "component-tests")
+              status="${{ needs.component-tests.result }}"
+              ;;
+            "integration-tests")
+              status="${{ needs.integration-tests.result }}"
+              ;;
+            *)
+              status="unknown"
+              ;;
+          esac
+          
           if [ "$status" = "success" ]; then
             echo "✅ **$job**: Passed" >> $GITHUB_STEP_SUMMARY
           elif [ "$status" = "failure" ]; then
