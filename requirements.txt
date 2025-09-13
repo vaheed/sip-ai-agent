@@ -2,7 +2,7 @@
 pjsua2==2.12
 pyaudio==0.2.13
 pydub==0.25.1
-websockets==11.0.3
+websockets>=11.0.3,<16.0.0
 
 # OpenAI API
 openai>=1.0.0

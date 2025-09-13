@@ -65,7 +65,7 @@ class HealthMonitor:
 
     def get_uptime(self) -> float:
         """Get system uptime in seconds."""
-        return time.time() - self.start_time
+        return float(time.time() - self.start_time)
 
     def get_system_metrics(self) -> Dict[str, Any]:
         """Get current system resource metrics."""

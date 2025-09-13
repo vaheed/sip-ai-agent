@@ -30,7 +30,7 @@ class OpenAIAgent:
         self.settings = get_settings()
         self.correlation_id = correlation_id
         self.client = OpenAI(api_key=self.settings.openai_api_key)
-        self.ws: Optional[websockets.ClientConnection] = None
+        self.ws: Optional[Any] = None
         self.is_active = False
         self.start_time = time.time()
 
@@ -108,7 +108,7 @@ class OpenAIAgent:
         }
 
         try:
-            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:  # type: ignore[attr-defined]
                 metrics.record_websocket_connection(self.settings.openai_mode.value)
 
                 # Send initial configuration
@@ -162,7 +162,7 @@ class OpenAIAgent:
         }
 
         try:
-            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+            async with websockets.connect(ws_url, extra_headers=headers) as self.ws:  # type: ignore[attr-defined]
                 metrics.record_websocket_connection(self.settings.openai_mode.value)
 
                 # Send session.update with proper configuration
