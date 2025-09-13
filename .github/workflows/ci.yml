@@ -219,13 +219,6 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Debug GitHub context
-      run: |
-        echo "Repository: ${{ github.repository }}"
-        echo "Actor: ${{ github.actor }}"
-        echo "Ref: ${{ github.ref }}"
-        echo "Event: ${{ github.event_name }}"
-    
     - name: Build and push Docker image
       run: |
         # Build and push with proper tagging
