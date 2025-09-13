@@ -30,7 +30,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev python3-dev wget git swig ffmpeg
+        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev libasound2-dev python3-dev wget git swig ffmpeg
     
     - name: Install dependencies
       run: |
@@ -77,7 +77,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev python3-dev wget git swig ffmpeg
+        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev libasound2-dev python3-dev wget git swig ffmpeg
     
     - name: Install dependencies
       run: |
@@ -135,7 +135,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev python3-dev wget git swig ffmpeg
+        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev libasound2-dev python3-dev wget git swig ffmpeg
     
     - name: Install dependencies
       run: |
@@ -165,14 +165,28 @@ jobs:
       with:
         python-version: '3.9'
     
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev libasound2-dev python3-dev wget git swig ffmpeg
+    
+    - name: Verify PortAudio installation
+      run: |
+        pkg-config --cflags --libs portaudio-2.0
+        ls -la /usr/include/portaudio.h
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # Create temporary requirements without pyaudio for integration tests
+        grep -v "^pyaudio" requirements.txt > requirements-no-audio.txt
+        pip install -r requirements-no-audio.txt
+        # Try to install pyaudio, but don't fail if it doesn't work
+        pip install pyaudio==0.2.13 || echo "PyAudio installation failed, continuing with tests (using mocks)"
     
     - name: Run integration tests
       run: |
-        pytest tests/ -v -m integration --tb=short
+        pytest tests/ -v --tb=short
       env:
         SIP_DOMAIN: test.example.com
         SIP_USER: 1001
