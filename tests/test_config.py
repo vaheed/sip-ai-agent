@@ -47,9 +47,10 @@ def test_settings_defaults():
 def test_settings_defaults_without_env():
     """Test default values without environment variable interference."""
     import os
+
     # Temporarily remove environment variable if it exists
     original_value = os.environ.pop("METRICS_ENABLED", None)
-    
+
     try:
         # Create settings without environment variable interference
         settings = Settings(
@@ -59,7 +60,7 @@ def test_settings_defaults_without_env():
             openai_api_key="sk-test-key",
             agent_id="va_test123",
         )
-        
+
         # This should use the default value from the Field definition
         assert settings.metrics_enabled is True
     finally:
