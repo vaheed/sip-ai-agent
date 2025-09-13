@@ -30,14 +30,14 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from call_history import get_call_history_manager
 from config import get_settings, reload_settings
 from logging_config import get_logger
 from monitor import Monitor, load_config, save_config
-from call_history import get_call_history_manager
 
 logger = get_logger("web_backend")
 

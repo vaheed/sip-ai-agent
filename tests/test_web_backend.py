@@ -4,12 +4,13 @@ Tests for the web backend functionality.
 """
 
 import json
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
-from app.web_backend import app
+import pytest
+from fastapi.testclient import TestClient
+
 from app.call_history import CallHistoryItem
+from app.web_backend import app
 
 
 @pytest.fixture

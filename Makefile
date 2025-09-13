@@ -93,17 +93,29 @@ docs: ## Generate documentation (if using sphinx)
 
 # Release helpers
 version: ## Show current version
-	@python -c "
-import sys
-sys.path.append('app')
-try:
-    from config import Settings
-    settings = Settings()
-    print('Version: 2.1.0')
-    print('OpenAI Mode:', settings.openai_mode.value)
-except Exception as e:
-    print('Error getting version info:', e)
-"
+	@python scripts/version.py current
+
+version-bump-patch: ## Bump patch version
+	@python scripts/version.py bump --type patch
+
+version-bump-minor: ## Bump minor version
+	@python scripts/version.py bump --type minor
+
+version-bump-major: ## Bump major version
+	@python scripts/version.py bump --type major
+
+version-tag: ## Create git tag for current version
+	@python scripts/version.py tag --push
+
+version-info: ## Show Docker image version info
+	@python scripts/version.py info
+
+release: ## Create a new release (bump version, tag, and push)
+	@echo "Creating new release..."
+	@read -p "Enter release type (patch/minor/major): " type; \
+	python scripts/version.py bump --type $$type; \
+	python scripts/version.py tag --push; \
+	echo "Release created successfully!"
 
 # Health check
 health: ## Check system health
@@ -179,3 +191,25 @@ web-build: ## Build the web UI Docker container
 
 web-run: ## Run the web UI in Docker
 	docker-compose up web
+
+# Deployment targets
+deploy: ## Deploy to production
+	./scripts/deploy.sh
+
+deploy-staging: ## Deploy to staging
+	ENVIRONMENT=staging ./scripts/deploy.sh
+
+deploy-version: ## Deploy specific version (usage: make deploy-version VERSION=v1.2.3)
+	VERSION=$(VERSION) ./scripts/deploy.sh
+
+deploy-status: ## Show deployment status
+	./scripts/deploy.sh status
+
+deploy-logs: ## Show deployment logs
+	./scripts/deploy.sh logs
+
+deploy-stop: ## Stop all services
+	./scripts/deploy.sh stop
+
+deploy-rollback: ## Rollback to previous version
+	./scripts/deploy.sh rollback
