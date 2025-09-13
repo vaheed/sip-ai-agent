@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-cov lint format typecheck security clean docker-build docker-run docker-test pre-commit setup-dev
+.PHONY: help install install-dev test test-cov lint format typecheck security clean docker-build docker-run docker-test pre-commit setup-dev web-ui web-demo
 
 # Default target
 help: ## Show this help message
@@ -166,3 +166,16 @@ if missing_vars:
 else:
     print('✅ All required environment variables are set')
 "
+
+# Web UI targets
+web-ui: ## Start the web UI (development)
+	python -m app.start_web_ui
+
+web-demo: ## Start the web UI with demo calls
+	python -m app.start_web_ui --demo
+
+web-build: ## Build the web UI Docker container
+	docker-compose build web
+
+web-run: ## Run the web UI in Docker
+	docker-compose up web

@@ -26,6 +26,7 @@ from logging_config import (
 )
 from metrics import get_metrics
 from monitor import monitor
+from call_history import get_call_history_manager
 
 # OpenAIAgent is imported by SIPClient when needed
 from sip_client import SIPClient, SIPRegistrationError
@@ -39,6 +40,7 @@ class SIPAIAgent:
         self.logger = get_logger("agent")
         self.metrics = get_metrics()
         self.health_monitor = get_health_monitor()
+        self.call_history_manager = get_call_history_manager()
         self.sip_client: Optional[SIPClient] = None
         self.is_running = False
         self.correlation_id = generate_correlation_id()
