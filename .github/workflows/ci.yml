@@ -202,6 +202,9 @@ jobs:
     name: Deploy
     needs: [lint-and-typecheck, test, build-and-test-docker, security-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
     
     steps:
     - uses: actions/checkout@v4
@@ -216,12 +219,22 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
+    - name: Debug GitHub context
+      run: |
+        echo "Repository: ${{ github.repository }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "Ref: ${{ github.ref }}"
+        echo "Event: ${{ github.event_name }}"
+    
     - name: Build and push Docker image
       run: |
-        docker build -t ghcr.io/${{ github.repository }}:latest .
-        docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
-        docker push ghcr.io/${{ github.repository }}:latest
-        docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+        # Build and push with proper tagging
+        docker buildx build \
+          --platform linux/amd64 \
+          --tag ghcr.io/${{ github.repository }}:latest \
+          --tag ghcr.io/${{ github.repository }}:${{ github.sha }} \
+          --push \
+          .
     
     - name: Update deployment (example)
       run: |
