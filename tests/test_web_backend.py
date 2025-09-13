@@ -21,7 +21,7 @@ def client():
 @pytest.fixture
 def mock_call_history_manager():
     """Mock call history manager."""
-    with patch('app.web_backend.call_history_manager') as mock:
+    with patch("app.web_backend.call_history_manager") as mock:
         mock.get_call_history.return_value = []
         mock.get_active_calls.return_value = []
         mock.get_call_statistics.return_value = {
@@ -39,7 +39,7 @@ def mock_call_history_manager():
 @pytest.fixture
 def mock_monitor():
     """Mock monitor."""
-    with patch('app.web_backend.monitor') as mock:
+    with patch("app.web_backend.monitor") as mock:
         mock.sip_registered = True
         mock.active_calls = []
         mock.api_tokens_used = 0
@@ -68,10 +68,9 @@ def test_frontend_serving(client):
 
 def test_login(client):
     """Test authentication login."""
-    response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
+    response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -80,10 +79,9 @@ def test_login(client):
 
 def test_login_invalid_credentials(client):
     """Test login with invalid credentials."""
-    response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "wrongpassword"
-    })
+    response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "wrongpassword"}
+    )
     assert response.status_code == 401
 
 
@@ -115,10 +113,10 @@ def test_call_history(client, mock_call_history_manager):
             start_time=1640995200.0,
             end_time=1640995260.0,
             duration=60.0,
-            status="completed"
+            status="completed",
         )
     ]
-    
+
     response = client.get("/api/call_history")
     assert response.status_code == 200
     data = response.json()
@@ -139,10 +137,10 @@ def test_call_history_csv(client, mock_call_history_manager):
             direction="incoming",
             tokens_used=100,
             cost=0.001,
-            error_message=None
+            error_message=None,
         )
     ]
-    
+
     response = client.get("/api/call_history/csv")
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
@@ -162,7 +160,7 @@ def test_call_statistics(client, mock_call_history_manager):
 def test_logs(client, mock_monitor):
     """Test logs endpoint."""
     mock_monitor.logs = ["[2024-01-01 12:00:00] Test log message"]
-    
+
     response = client.get("/api/logs")
     assert response.status_code == 200
     data = response.json()
@@ -178,14 +176,20 @@ def test_config_get_unauthorized(client):
 
 def test_config_get_authorized(client, mock_monitor):
     """Test config endpoint with authentication."""
-    # Mock authentication
-    with patch('app.web_backend.get_current_user') as mock_auth:
-        mock_auth.return_value = {"username": "admin"}
-        
-        response = client.get("/api/config")
-        assert response.status_code == 200
-        data = response.json()
-        assert "config" in data
+    # First login to get a token
+    login_response = client.post("/api/auth/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    assert login_response.status_code == 200
+    token = login_response.json()["token"]
+
+    # Use token in Authorization header
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get("/api/config", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "config" in data
 
 
 def test_config_update_unauthorized(client):
@@ -196,14 +200,20 @@ def test_config_update_unauthorized(client):
 
 def test_config_update_authorized(client, mock_monitor):
     """Test config update with authentication."""
-    # Mock authentication
-    with patch('app.web_backend.get_current_user') as mock_auth:
-        mock_auth.return_value = {"username": "admin"}
-        
-        response = client.post("/api/config", json={"config": {"TEST": "value"}})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
+    # First login to get a token
+    login_response = client.post("/api/auth/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    assert login_response.status_code == 200
+    token = login_response.json()["token"]
+
+    # Use token in Authorization header
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/config", json={"config": {"TEST": "value"}}, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
 
 
 def test_config_reload_unauthorized(client):
@@ -214,14 +224,20 @@ def test_config_reload_unauthorized(client):
 
 def test_config_reload_authorized(client, mock_monitor):
     """Test config reload with authentication."""
-    # Mock authentication
-    with patch('app.web_backend.get_current_user') as mock_auth:
-        mock_auth.return_value = {"username": "admin"}
-        
-        response = client.post("/api/config/reload")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
+    # First login to get a token
+    login_response = client.post("/api/auth/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    assert login_response.status_code == 200
+    token = login_response.json()["token"]
+
+    # Use token in Authorization header
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post("/api/config/reload", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
 
 
 def test_auth_status_unauthorized(client):
@@ -232,12 +248,18 @@ def test_auth_status_unauthorized(client):
 
 def test_auth_status_authorized(client):
     """Test auth status with authentication."""
-    # Mock authentication
-    with patch('app.web_backend.get_current_user') as mock_auth:
-        mock_auth.return_value = {"username": "admin"}
-        
-        response = client.get("/api/auth/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["authenticated"] is True
-        assert data["username"] == "admin"
+    # First login to get a token
+    login_response = client.post("/api/auth/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    assert login_response.status_code == 200
+    token = login_response.json()["token"]
+
+    # Use token in Authorization header
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.get("/api/auth/status", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["authenticated"] is True
+    assert data["username"] == "admin"

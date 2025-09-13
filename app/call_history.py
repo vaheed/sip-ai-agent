@@ -113,7 +113,9 @@ class CallHistoryItem:
 class CallHistoryManager:
     """Manages call history with persistence and analytics."""
 
-    def __init__(self, history_file: str = "call_history.json", max_history: int = 1000):
+    def __init__(
+        self, history_file: str = "call_history.json", max_history: int = 1000
+    ):
         self.history_file = history_file
         self.max_history = max_history
         self.active_calls: Dict[str, CallHistoryItem] = {}
@@ -224,12 +226,12 @@ class CallHistoryManager:
                 "total_cost": 0.0,
             }
 
-        completed_calls = [call for call in self.call_history if call.status == "completed"]
+        completed_calls = [
+            call for call in self.call_history if call.status == "completed"
+        ]
         failed_calls = [call for call in self.call_history if call.status == "failed"]
 
-        total_duration = sum(
-            call.duration for call in completed_calls if call.duration
-        )
+        total_duration = sum(call.duration for call in completed_calls if call.duration)
         total_tokens = sum(call.tokens_used for call in self.call_history)
         total_cost = sum(call.cost for call in self.call_history)
 
@@ -238,11 +240,17 @@ class CallHistoryManager:
             "completed_calls": len(completed_calls),
             "failed_calls": len(failed_calls),
             "active_calls": len(self.active_calls),
-            "average_duration": total_duration / len(completed_calls) if completed_calls else 0.0,
+            "average_duration": (
+                total_duration / len(completed_calls) if completed_calls else 0.0
+            ),
             "total_duration": total_duration,
             "total_tokens": total_tokens,
             "total_cost": total_cost,
-            "success_rate": len(completed_calls) / len(self.call_history) if self.call_history else 0.0,
+            "success_rate": (
+                len(completed_calls) / len(self.call_history)
+                if self.call_history
+                else 0.0
+            ),
         }
 
     def export_to_csv(self, filepath: str) -> str:
@@ -275,11 +283,13 @@ class CallHistoryManager:
                     "start_time": datetime.fromtimestamp(call.start_time).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
-                    "end_time": datetime.fromtimestamp(call.end_time).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                    if call.end_time
-                    else "",
+                    "end_time": (
+                        datetime.fromtimestamp(call.end_time).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                        if call.end_time
+                        else ""
+                    ),
                     "duration": call.duration or "",
                     "status": call.status,
                     "tokens_used": call.tokens_used,
