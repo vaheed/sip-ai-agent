@@ -72,7 +72,9 @@ class CallSimulator:
             )
 
             # End the call
-            status = random.choice(["completed", "completed", "completed", "failed"])  # nosec B311
+            status = random.choice(
+                ["completed", "completed", "completed", "failed"]
+            )  # nosec B311
             error_message = "Network timeout" if status == "failed" else None
 
             call_item.end_call(status, error_message)
@@ -135,7 +137,9 @@ class CallSimulator:
             )
 
             # End call
-            status = random.choice(["completed", "completed", "completed", "failed"])  # nosec B311
+            status = random.choice(
+                ["completed", "completed", "completed", "failed"]
+            )  # nosec B311
             error_message = "Call dropped" if status == "failed" else None
 
             call_item.end_call(status, error_message)

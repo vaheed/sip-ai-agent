@@ -177,10 +177,9 @@ def test_config_get_unauthorized(client):
 def test_config_get_authorized(client, mock_monitor):
     """Test config endpoint with authentication."""
     # First login to get a token
-    login_response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
+    login_response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
+    )
     assert login_response.status_code == 200
     token = login_response.json()["token"]
 
@@ -201,16 +200,17 @@ def test_config_update_unauthorized(client):
 def test_config_update_authorized(client, mock_monitor):
     """Test config update with authentication."""
     # First login to get a token
-    login_response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
+    login_response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
+    )
     assert login_response.status_code == 200
     token = login_response.json()["token"]
 
     # Use token in Authorization header
     headers = {"Authorization": f"Bearer {token}"}
-    response = client.post("/api/config", json={"config": {"TEST": "value"}}, headers=headers)
+    response = client.post(
+        "/api/config", json={"config": {"TEST": "value"}}, headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -225,10 +225,9 @@ def test_config_reload_unauthorized(client):
 def test_config_reload_authorized(client, mock_monitor):
     """Test config reload with authentication."""
     # First login to get a token
-    login_response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
+    login_response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
+    )
     assert login_response.status_code == 200
     token = login_response.json()["token"]
 
@@ -249,10 +248,9 @@ def test_auth_status_unauthorized(client):
 def test_auth_status_authorized(client):
     """Test auth status with authentication."""
     # First login to get a token
-    login_response = client.post("/api/auth/login", json={
-        "username": "admin",
-        "password": "admin123"
-    })
+    login_response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin123"}
+    )
     assert login_response.status_code == 200
     token = login_response.json()["token"]
 

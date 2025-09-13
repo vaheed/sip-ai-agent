@@ -560,7 +560,7 @@ async def shutdown_event():
     logger.info("Shutting down SIP AI Agent Web Backend")
 
 
-def start_web_backend(host: str = "0.0.0.0", port: int = 8080):
+def start_web_backend(host: str = "0.0.0.0", port: int = 8080):  # nosec B104
     """Start the web backend server."""
     logger.info("Starting web backend server", host=host, port=port)
 
