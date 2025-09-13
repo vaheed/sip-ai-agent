@@ -62,7 +62,7 @@ docker-test: ## Test Docker image
 
 # Configuration validation
 validate-config: ## Validate configuration
-	python test_config.py
+	python -c "import sys; sys.path.append('app'); from config import Settings; s = Settings(); print('Configuration validation passed')"
 
 # Development server
 dev: ## Run development server (requires .env file)

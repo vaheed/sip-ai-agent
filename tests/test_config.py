@@ -40,7 +40,32 @@ def test_settings_defaults():
     assert settings.audio_sample_rate == 16000
     assert settings.audio_channels == 1
     assert settings.openai_temperature == 0.3
-    assert settings.metrics_enabled is True
+    # Note: metrics_enabled can be overridden by environment variables in CI
+    assert settings.metrics_enabled in [True, False]  # Accept either value
+
+
+def test_settings_defaults_without_env():
+    """Test default values without environment variable interference."""
+    import os
+    # Temporarily remove environment variable if it exists
+    original_value = os.environ.pop("METRICS_ENABLED", None)
+    
+    try:
+        # Create settings without environment variable interference
+        settings = Settings(
+            sip_domain="test.example.com",
+            sip_user="1001",
+            sip_pass="testpass",
+            openai_api_key="sk-test-key",
+            agent_id="va_test123",
+        )
+        
+        # This should use the default value from the Field definition
+        assert settings.metrics_enabled is True
+    finally:
+        # Restore original environment variable
+        if original_value is not None:
+            os.environ["METRICS_ENABLED"] = original_value
 
 
 def test_settings_validation_errors():

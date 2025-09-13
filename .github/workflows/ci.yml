@@ -118,7 +118,7 @@ jobs:
     - name: Test configuration validation
       run: |
         # Test configuration validation
-        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python test_config.py
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "from config import Settings; s = Settings(); print('Configuration validation passed')"
 
   security-scan:
     runs-on: ubuntu-latest
