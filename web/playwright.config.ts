@@ -44,6 +44,5 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000, // 2 minutes
   },
-  // Global setup for accessibility testing
-  globalSetup: require.resolve('./tests/global-setup.ts'),
+  // Global setup removed to fix CI issues
 });

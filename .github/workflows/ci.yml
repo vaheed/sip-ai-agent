@@ -184,12 +184,12 @@ jobs:
       run: npm run build
     
     - name: Start dev server
-      run: npm run dev &
+      run: |
+        npm run dev &
+        sleep 10
+        curl -f http://localhost:3000 || exit 1
       env:
         PORT: 3000
-    
-    - name: Wait for server
-      run: npx wait-on http://localhost:3000 --timeout 30000
     
     - name: Run accessibility tests
       run: |
@@ -209,7 +209,6 @@ jobs:
         path: |
           ./web/test-results/
           ./web/playwright-report/
-          ./web/pa11y-screenshots/
         retention-days: 30
 
   # Docker Build and Test

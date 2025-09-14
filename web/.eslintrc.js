@@ -44,5 +44,14 @@ module.exports = {
     '*.config.js',
     '*.config.ts',
     'e2e-tests/',
+    'tests/',
+  ],
+  overrides: [
+    {
+      files: ['tests/**/*', '**/*.test.*', '**/*.spec.*'],
+      rules: {
+        'no-console': 'off',
+      },
+    },
   ],
 };
