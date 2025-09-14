@@ -26,7 +26,6 @@ test.describe('Accessibility Tests', () => {
     
     // If there are no inputs, that's fine for this basic app
     if (count === 0) {
-      console.log('No input elements found - skipping form label test');
       return;
     }
     
@@ -46,7 +45,6 @@ test.describe('Accessibility Tests', () => {
     
     // If there are no buttons, that's fine for this basic app
     if (count === 0) {
-      console.log('No button elements found - skipping button accessibility test');
       return;
     }
     
@@ -80,7 +78,6 @@ test.describe('Accessibility Tests', () => {
     const count = await focusableElements.count();
     
     if (count === 0) {
-      console.log('No focusable elements found - skipping keyboard navigation test');
       return;
     }
     
