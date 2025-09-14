@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Accessibility Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080');
+    await page.goto('/');
   });
 
   test('should have proper heading structure', async ({ page }) => {
