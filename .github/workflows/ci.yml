@@ -6,10 +6,17 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  lint-and-typecheck:
+  # Backend Linting and Type Checking
+  backend-lint-and-typecheck:
     runs-on: ubuntu-latest
-    name: Lint and Type Check
+    name: Backend Lint and Type Check
     
     steps:
     - uses: actions/checkout@v4
@@ -17,7 +24,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Cache pip dependencies
       uses: actions/cache@v3
@@ -54,9 +61,49 @@ jobs:
       run: |
         mypy app/ --ignore-missing-imports --no-strict-optional
 
-  test:
+  # Frontend Linting and Type Checking
+  frontend-lint-and-typecheck:
     runs-on: ubuntu-latest
-    name: Run Tests
+    name: Frontend Lint and Type Check
+    defaults:
+      run:
+        working-directory: ./web
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run ESLint
+      run: npm run lint
+    
+    - name: Run Stylelint
+      run: npm run stylelint
+    
+    - name: Run TypeScript check
+      run: npx tsc --noEmit
+    
+    - name: Check for hardcoded values
+      run: |
+        echo "Checking for hardcoded colors..."
+        if grep -r "#[0-9a-fA-F]\{3,6\}" . --exclude-dir=node_modules --exclude-dir=dist; then
+          echo "❌ Found hardcoded hex colors. Use design tokens instead."
+          exit 1
+        fi
+        echo "✅ No hardcoded colors found"
+
+  # Backend Tests
+  backend-test:
+    runs-on: ubuntu-latest
+    name: Backend Tests
     
     steps:
     - uses: actions/checkout@v4
@@ -64,7 +111,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Cache pip dependencies
       uses: actions/cache@v3
@@ -86,19 +133,94 @@ jobs:
     
     - name: Run tests with pytest
       run: |
-        pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+        pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
+        flags: backend
+        name: backend-coverage
         fail_ci_if_error: false
 
+  # Frontend Tests
+  frontend-test:
+    runs-on: ubuntu-latest
+    name: Frontend Tests
+    defaults:
+      run:
+        working-directory: ./web
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run unit tests
+      run: npm run test:coverage
+    
+    - name: Upload frontend coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./web/coverage/lcov.info
+        flags: frontend
+        name: frontend-coverage
+        fail_ci_if_error: false
+
+  # Frontend E2E Tests
+  frontend-e2e:
+    runs-on: ubuntu-latest
+    name: Frontend E2E Tests
+    defaults:
+      run:
+        working-directory: ./web
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Run E2E tests
+      run: npm run test:e2e
+      env:
+        CI: true
+    
+    - name: Upload E2E results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-results
+        path: |
+          ./web/test-results/
+          ./web/playwright-report/
+
+  # Docker Build and Test
   build-and-test-docker:
     runs-on: ubuntu-latest
-    name: Build and Test Docker Image
+    name: Build and Test Docker Images
+    needs: [backend-lint-and-typecheck, frontend-lint-and-typecheck, backend-test, frontend-test]
     
     steps:
     - uses: actions/checkout@v4
@@ -106,23 +228,39 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build Docker image
+    - name: Build Backend Docker image
       run: |
         docker build -t sip-ai-agent:test .
     
-    - name: Test Docker image
+    - name: Test Backend Docker image
       run: |
         # Test that the container starts without errors
-        docker run --rm sip-ai-agent:test python -c "print('Docker image test passed')"
+        docker run --rm sip-ai-agent:test python -c "print('Backend Docker image test passed')"
     
-    - name: Test configuration validation
+    - name: Test Backend configuration validation
       run: |
         # Test configuration validation
-        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "from config import Settings; s = Settings(); print('Configuration validation passed')"
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "from config import Settings; s = Settings(); print('Backend configuration validation passed')"
+    
+    - name: Build Web UI Docker image
+      run: |
+        docker build -f Dockerfile.web -t sip-ai-agent-web:test .
+    
+    - name: Test Web UI Docker image
+      run: |
+        # Test that the web container starts without errors
+        docker run --rm sip-ai-agent-web:test python -c "print('Web UI Docker image test passed')"
+    
+    - name: Test Web UI configuration validation
+      run: |
+        # Test web configuration validation
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent-web:test python -c "from config import Settings; s = Settings(); print('Web UI configuration validation passed')"
 
+  # Security Scanning
   security-scan:
     runs-on: ubuntu-latest
     name: Security Scan
+    needs: [backend-lint-and-typecheck, frontend-lint-and-typecheck]
     
     steps:
     - uses: actions/checkout@v4
@@ -130,7 +268,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Install system dependencies
       run: |
@@ -151,11 +289,36 @@ jobs:
       run: |
         safety scan --output json > safety-report.json || true
         safety check --output screen
+    
+    - name: Setup Node.js for frontend security scan
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install frontend dependencies
+      run: |
+        cd web
+        npm ci
+    
+    - name: Run npm audit
+      run: |
+        cd web
+        npm audit --audit-level=moderate
+    
+    - name: Run Snyk security scan
+      run: |
+        cd web
+        npx snyk test --severity-threshold=high || true
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN || '' }}
 
+  # Integration Tests
   integration-test:
     runs-on: ubuntu-latest
     name: Integration Tests
-    needs: [lint-and-typecheck, test]
+    needs: [backend-lint-and-typecheck, frontend-lint-and-typecheck, backend-test, frontend-test]
     
     steps:
     - uses: actions/checkout@v4
@@ -163,7 +326,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Install system dependencies
       run: |
@@ -184,7 +347,7 @@ jobs:
         # Try to install pyaudio, but don't fail if it doesn't work
         pip install pyaudio==0.2.13 || echo "PyAudio installation failed, continuing with tests (using mocks)"
     
-    - name: Run integration tests
+    - name: Run backend integration tests
       run: |
         pytest tests/ -v --tb=short
       env:
@@ -196,15 +359,36 @@ jobs:
         DEBUG: true
         METRICS_ENABLED: false
         STRUCTURED_LOGGING: false
+    
+    - name: Setup Node.js for frontend integration tests
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install frontend dependencies
+      run: |
+        cd web
+        npm ci
+    
+    - name: Run frontend integration tests
+      run: |
+        cd web
+        npm run test:e2e
+      env:
+        CI: true
 
-  deploy:
+  # Build and Push Docker Images
+  build-and-push:
     runs-on: ubuntu-latest
-    name: Deploy
-    needs: [lint-and-typecheck, test, build-and-test-docker, security-scan]
+    name: Build and Push Docker Images
+    needs: [backend-lint-and-typecheck, frontend-lint-and-typecheck, backend-test, frontend-test, build-and-test-docker, security-scan, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
       packages: write
+      id-token: write
     
     steps:
     - uses: actions/checkout@v4
@@ -215,22 +399,83 @@ jobs:
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v3
       with:
-        registry: ghcr.io
+        registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Build and push Docker image
-      run: |
-        docker buildx build \
-          --platform linux/amd64 \
-          --tag ghcr.io/${{ github.repository }}:latest \
-          --tag ghcr.io/${{ github.repository }}:${{ github.sha }} \
-          --push \
-          .
+    - name: Extract metadata for Backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix=sha-
+        flavor: |
+          latest=false
     
-    - name: Deployment completed
+    - name: Build and push Backend Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Extract metadata for Web UI
+      id: meta-web
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix=sha-
+        flavor: |
+          latest=false
+    
+    - name: Build and push Web UI Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.web
+        push: true
+        tags: ${{ steps.meta-web.outputs.tags }}
+        labels: ${{ steps.meta-web.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Generate deployment summary
       run: |
-        echo "✅ Docker image successfully pushed to GitHub Container Registry"
-        echo "📦 Image: ghcr.io/${{ github.repository }}:latest"
-        echo "🏷️  Tag: ghcr.io/${{ github.repository }}:${{ github.sha }}"
-        echo "🔗 Package URL: https://github.com/${{ github.repository }}/pkgs/container/sip-ai-agent"
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Backend Images:" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta-backend.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Web UI Images:" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta-web.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Registry:" >> $GITHUB_STEP_SUMMARY
+        echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Repository: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Info:" >> $GITHUB_STEP_SUMMARY
+        echo "- Version: ${{ steps.meta-backend.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Package URLs:" >> $GITHUB_STEP_SUMMARY
+        echo "- Backend: https://github.com/${{ github.repository }}/pkgs/container/sip-ai-agent" >> $GITHUB_STEP_SUMMARY
+        echo "- Web UI: https://github.com/${{ github.repository }}/pkgs/container/sip-ai-agent-web" >> $GITHUB_STEP_SUMMARY

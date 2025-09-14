@@ -143,6 +143,33 @@ except Exception as e:
 # All quality checks
 check-all: lint typecheck security test ## Run all quality checks
 
+# Comprehensive testing
+test-all: ## Run comprehensive test suite (backend + frontend + docker)
+	@echo "Running comprehensive test suite..."
+	@if [ -f "scripts/test-all.sh" ]; then \
+		chmod +x scripts/test-all.sh && ./scripts/test-all.sh; \
+	elif [ -f "scripts/test-all.ps1" ]; then \
+		powershell -ExecutionPolicy Bypass -File scripts/test-all.ps1; \
+	else \
+		echo "Test script not found. Please run individual tests."; \
+	fi
+
+test-all-backend: ## Run comprehensive backend tests only
+	@echo "Running backend tests..."
+	@if [ -f "scripts/test-all.sh" ]; then \
+		chmod +x scripts/test-all.sh && ./scripts/test-all.sh; \
+	elif [ -f "scripts/test-all.ps1" ]; then \
+		powershell -ExecutionPolicy Bypass -File scripts/test-all.ps1 -SkipFrontend; \
+	fi
+
+test-all-frontend: ## Run comprehensive frontend tests only
+	@echo "Running frontend tests..."
+	@if [ -f "scripts/test-all.sh" ]; then \
+		chmod +x scripts/test-all.sh && ./scripts/test-all.sh; \
+	elif [ -f "scripts/test-all.ps1" ]; then \
+		powershell -ExecutionPolicy Bypass -File scripts/test-all.ps1 -SkipDocker; \
+	fi
+
 # CI/CD helpers
 ci-test: ## Run tests for CI environment
 	pytest tests/ -v --tb=short --maxfail=5

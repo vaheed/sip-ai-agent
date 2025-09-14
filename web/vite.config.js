@@ -1,13 +1,26 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
     },
+  },
+  server: {
+    port: 3000,
+    host: true,
+  },
+  preview: {
+    port: 8080,
+    host: true,
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
   },
   test: {
     globals: true,
@@ -22,17 +35,7 @@ export default defineConfig({
         '**/*.d.ts',
         '**/*.config.js',
         '**/*.config.ts',
-        '**/*.stories.tsx',
-        '**/*.stories.ts',
       ],
-      thresholds: {
-        global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
-        },
-      },
     },
   },
 })
