@@ -13,14 +13,14 @@ from typing import Callable, Dict, Optional
 
 import pjsua2 as pj
 
-from config import get_settings
-from logging_config import (
+from .config import get_settings
+from .logging_config import (
     generate_correlation_id,
     get_logger,
     log_sip_event,
     with_correlation_id,
 )
-from metrics import get_metrics
+from .metrics import get_metrics
 
 logger = get_logger("sip_client")
 metrics = get_metrics()

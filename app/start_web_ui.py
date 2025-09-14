@@ -13,10 +13,10 @@ import threading
 import time
 from typing import Optional
 
-from agent import SIPAIAgent
-from config import get_settings
-from logging_config import get_logger, setup_logging
-from web_backend import start_web_backend
+from .agent import SIPAIAgent
+from .config import get_settings
+from .logging_config import get_logger, setup_logging
+from .web_backend import start_web_backend
 
 logger = get_logger("startup")
 

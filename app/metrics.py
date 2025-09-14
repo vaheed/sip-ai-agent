@@ -11,8 +11,8 @@ from typing import Dict, Optional
 
 from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 
-from config import get_settings
-from logging_config import get_logger
+from .config import get_settings
+from .logging_config import get_logger
 
 logger = get_logger("metrics")
 

@@ -13,8 +13,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
-from config import OpenAIAPIMode
-from openai_agent import OpenAIAgent
+from app.config import OpenAIAPIMode
+from app.openai_agent import OpenAIAgent
 
 
 class TestOpenAIAgent:
@@ -28,7 +28,7 @@ class TestOpenAIAgent:
     @pytest.fixture
     def mock_agent(self, agent_config):
         """Create a mock OpenAI agent."""
-        with patch("openai_agent.get_settings") as mock_get_settings:
+        with patch("app.openai_agent.get_settings") as mock_get_settings:
             mock_get_settings.return_value = agent_config["settings"]
             agent = OpenAIAgent(agent_config["correlation_id"])
             return agent
@@ -41,7 +41,7 @@ class TestOpenAIAgent:
 
     def test_configuration_validation_realtime(self, test_settings):
         """Test configuration validation for realtime mode."""
-        with patch("openai_agent.get_settings") as mock_get_settings:
+        with patch("app.openai_agent.get_settings") as mock_get_settings:
             mock_get_settings.return_value = test_settings
             agent = OpenAIAgent("test-correlation-id")
 
@@ -53,7 +53,7 @@ class TestOpenAIAgent:
         # Create invalid settings
         test_settings.openai_voice = "invalid_voice"
 
-        with patch("openai_agent.get_settings") as mock_get_settings:
+        with patch("app.openai_agent.get_settings") as mock_get_settings:
             mock_get_settings.return_value = test_settings
             with pytest.raises(ValueError, match="Voice invalid_voice not supported"):
                 OpenAIAgent("test-correlation-id")
@@ -277,7 +277,7 @@ class TestOpenAIAgentIntegration:
     @pytest.mark.asyncio
     async def test_full_call_flow_realtime(self, test_settings, sample_audio_frame):
         """Test full call flow with realtime API."""
-        with patch("openai_agent.get_settings") as mock_get_settings:
+        with patch("app.openai_agent.get_settings") as mock_get_settings:
             mock_get_settings.return_value = test_settings
 
             agent = OpenAIAgent("test-correlation-id")

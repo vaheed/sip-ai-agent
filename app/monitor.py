@@ -5,10 +5,10 @@ import time
 
 from flask import Flask, jsonify, render_template_string, request
 
-from config import get_settings
-from health import HealthStatus, get_health_monitor
-from logging_config import generate_correlation_id, get_logger
-from metrics import get_metrics
+from .config import get_settings
+from .health import HealthStatus, get_health_monitor
+from .logging_config import generate_correlation_id, get_logger
+from .metrics import get_metrics
 
 
 def _env_path():

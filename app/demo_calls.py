@@ -11,8 +11,8 @@ import random
 import time
 from datetime import datetime, timedelta
 
-from call_history import get_call_history_manager
-from logging_config import get_logger
+from .call_history import get_call_history_manager
+from .logging_config import get_logger
 
 logger = get_logger("demo_calls")
 

@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from logging_config import get_logger
+from .logging_config import get_logger
 
 logger = get_logger("call_history")
 

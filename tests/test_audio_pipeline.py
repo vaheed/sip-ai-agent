@@ -27,7 +27,7 @@ mock_pjsua2 = Mock()
 mock_pjsua2.pj = MockPJ()
 sys.modules["pjsua2"] = mock_pjsua2
 
-from openai_agent import OpenAIAgent
+from app.openai_agent import OpenAIAgent
 
 
 class TestEnhancedAudioCallback:
@@ -141,7 +141,7 @@ class TestAudioPipelineIntegration:
         agent = OpenAIAgent("test-correlation-id")
 
         # Mock WebSocket
-        with patch("openai_agent.websockets.connect") as mock_connect:
+        with patch("app.openai_agent.websockets.connect") as mock_connect:
             mock_ws = AsyncMock()
             mock_ws.closed = False
             mock_ws.send = AsyncMock()
