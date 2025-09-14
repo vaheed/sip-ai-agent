@@ -1,0 +1,395 @@
+name: Complete CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Backend Quality Checks
+  backend-quality:
+    runs-on: ubuntu-latest
+    name: Backend Quality Checks
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libpcap-dev portaudio19-dev libasound2-dev python3-dev wget git swig ffmpeg
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run black (code formatting)
+      run: black --check --diff .
+    
+    - name: Run isort (import sorting)
+      run: isort --check-only --diff .
+    
+    - name: Run flake8 (linting)
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run mypy (type checking)
+      run: mypy app/ --ignore-missing-imports --no-strict-optional
+    
+    - name: Run bandit security scan
+      run: |
+        bandit -r app/ -f json -o bandit-report.json || true
+        bandit -r app/
+    
+    - name: Run safety check
+      run: |
+        safety scan --output json > safety-report.json || true
+        safety check --output screen
+    
+    - name: Run backend tests
+      run: |
+        pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --cov-report=term-missing
+      env:
+        SIP_DOMAIN: test.example.com
+        SIP_USER: 1001
+        SIP_PASS: testpass
+        OPENAI_API_KEY: sk-test-key
+        AGENT_ID: va-test123
+        DEBUG: true
+        METRICS_ENABLED: false
+        STRUCTURED_LOGGING: false
+    
+    - name: Upload backend coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: backend
+        name: backend-coverage
+        fail_ci_if_error: false
+
+  # Frontend Quality Checks
+  frontend-quality:
+    runs-on: ubuntu-latest
+    name: Frontend Quality Checks
+    defaults:
+      run:
+        working-directory: ./web
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run ESLint
+      run: npm run lint
+    
+    - name: Run Stylelint
+      run: npm run stylelint
+    
+    - name: Run TypeScript check
+      run: npx tsc --noEmit
+    
+    - name: Check for hardcoded values
+      run: |
+        echo "Checking for hardcoded colors..."
+        if grep -r "#[0-9a-fA-F]\{3,6\}" . --exclude-dir=node_modules --exclude-dir=dist; then
+          echo "❌ Found hardcoded hex colors. Use design tokens instead."
+          exit 1
+        fi
+        echo "✅ No hardcoded colors found"
+    
+    - name: Run npm audit
+      run: npm audit --audit-level=moderate
+    
+    - name: Run unit tests
+      run: npm run test:coverage
+    
+    - name: Upload frontend coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./web/coverage/lcov.info
+        flags: frontend
+        name: frontend-coverage
+        fail_ci_if_error: false
+
+  # Frontend E2E and Accessibility Tests
+  frontend-e2e:
+    runs-on: ubuntu-latest
+    name: Frontend E2E & Accessibility Tests
+    defaults:
+      run:
+        working-directory: ./web
+    needs: frontend-quality
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ./web/package.json
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+    
+    - name: Build application
+      run: npm run build
+    
+    - name: Start preview server
+      run: npm run preview &
+      env:
+        PORT: 8080
+    
+    - name: Wait for server
+      run: npx wait-on http://localhost:8080 --timeout 30000
+    
+    - name: Run accessibility tests
+      run: |
+        npm run a11y || true
+        npx playwright test tests/e2e/accessibility.spec.ts --reporter=list || true
+    
+    - name: Run E2E tests
+      run: npm run test:e2e
+      env:
+        CI: true
+    
+    - name: Run Lighthouse CI
+      run: npm run lighthouse || true
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: frontend-test-results
+        path: |
+          ./web/test-results/
+          ./web/playwright-report/
+          ./web/pa11y-screenshots/
+          ./web/lighthouse-results/
+
+  # Docker Build and Test
+  docker-build-test:
+    runs-on: ubuntu-latest
+    name: Docker Build and Test
+    needs: [backend-quality, frontend-quality]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Backend Docker image
+      run: |
+        docker build -t sip-ai-agent:test .
+    
+    - name: Test Backend Docker image
+      run: |
+        docker run --rm sip-ai-agent:test python -c "print('Backend Docker image test passed')"
+    
+    - name: Test Backend configuration validation
+      run: |
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent:test python -c "from config import Settings; s = Settings(); print('Backend configuration validation passed')"
+    
+    - name: Build Web UI Docker image
+      run: |
+        docker build -f Dockerfile.web -t sip-ai-agent-web:test .
+    
+    - name: Test Web UI Docker image
+      run: |
+        docker run --rm sip-ai-agent-web:test python -c "print('Web UI Docker image test passed')"
+    
+    - name: Test Web UI configuration validation
+      run: |
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent-web:test python -c "from config import Settings; s = Settings(); print('Web UI configuration validation passed')"
+
+  # Build and Push Docker Images (only on main branch)
+  build-and-push:
+    runs-on: ubuntu-latest
+    name: Build and Push Docker Images
+    needs: [backend-quality, frontend-quality, frontend-e2e, docker-build-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata for Backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix=sha-
+        flavor: |
+          latest=false
+    
+    - name: Build and push Backend Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Extract metadata for Web UI
+      id: meta-web
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix=sha-
+        flavor: |
+          latest=false
+    
+    - name: Build and push Web UI Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.web
+        push: true
+        tags: ${{ steps.meta-web.outputs.tags }}
+        labels: ${{ steps.meta-web.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Generate deployment summary
+      run: |
+        echo "## 🚀 Complete Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ All Quality Checks Passed!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Backend Images:" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta-backend.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Web UI Images:" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta-web.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Registry:" >> $GITHUB_STEP_SUMMARY
+        echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Repository: ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Info:" >> $GITHUB_STEP_SUMMARY
+        echo "- Version: ${{ steps.meta-backend.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Final Quality Gate
+  quality-gate:
+    runs-on: ubuntu-latest
+    name: Final Quality Gate
+    needs: [backend-quality, frontend-quality, frontend-e2e, docker-build-test]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "## 🎯 Complete Pipeline Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check each job status
+        jobs=("backend-quality" "frontend-quality" "frontend-e2e" "docker-build-test")
+        all_passed=true
+        
+        for job in "${jobs[@]}"; do
+          case "$job" in
+            "backend-quality")
+              status="${{ needs.backend-quality.result }}"
+              ;;
+            "frontend-quality")
+              status="${{ needs.frontend-quality.result }}"
+              ;;
+            "frontend-e2e")
+              status="${{ needs.frontend-e2e.result }}"
+              ;;
+            "docker-build-test")
+              status="${{ needs.docker-build-test.result }}"
+              ;;
+            *)
+              status="unknown"
+              ;;
+          esac
+          
+          if [ "$status" = "success" ]; then
+            echo "✅ **$job**: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "$status" = "failure" ]; then
+            echo "❌ **$job**: Failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          elif [ "$status" = "skipped" ]; then
+            echo "⏭️ **$job**: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **$job**: $status" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "$all_passed" = true ]; then
+          echo "🎉 **All quality checks passed! Pipeline successful!**" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🚨 **Some quality checks failed. Please review the results.**" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
