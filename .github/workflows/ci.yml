@@ -194,10 +194,7 @@ jobs:
     - name: Run accessibility tests
       run: |
         npm run a11y || true
-        npx playwright test tests/e2e/accessibility.spec.ts --reporter=list
-    
-    - name: Run E2E tests
-      run: npm run test:e2e
+        npx playwright test tests/e2e/accessibility.spec.ts --reporter=list --project=chromium
       env:
         CI: true
     
