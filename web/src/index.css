@@ -2,173 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom CSS variables for design tokens */
-:root {
-  /* Colors */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  --spacing-2xl: 3rem;
-  --spacing-3xl: 4rem;
-
-  /* Typography */
-  --font-family-sans: Inter, system-ui, sans-serif;
-  --font-family-mono: JetBrains Mono, monospace;
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
 }
 
-/* Dark mode variables */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-primary-50: #1e3a8a;
-    --color-primary-100: #1e40af;
-    --color-primary-200: #1d4ed8;
-    --color-primary-300: #2563eb;
-    --color-primary-400: #3b82f6;
-    --color-primary-500: #60a5fa;
-    --color-primary-600: #93c5fd;
-    --color-primary-700: #bfdbfe;
-    --color-primary-800: #dbeafe;
-    --color-primary-900: #eff6ff;
-  }
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
 }
 
-/* Base styles */
-@layer base {
-  html {
-    font-family: var(--font-family-sans);
-  }
-
-  body {
-    @apply bg-white text-gray-900;
-  }
-
-  /* Focus styles for accessibility */
-  *:focus-visible {
-    @apply outline-none ring-2 ring-blue-500 ring-offset-2;
-  }
-
-  /* Skip link for accessibility */
-  .skip-link {
-    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4;
-    @apply bg-blue-600 text-white px-4 py-2 rounded-md;
-    @apply z-50;
-  }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
 }
 
-/* Component styles */
-@layer components {
-  .btn {
-    @apply inline-flex items-center justify-center;
-    @apply font-medium rounded-md;
-    @apply transition-colors duration-200;
-    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  .btn--primary {
-    @apply bg-blue-600 text-white;
-    @apply hover:bg-blue-700;
-    @apply focus:ring-blue-500;
-  }
-
-  .btn--secondary {
-    @apply bg-gray-200 text-gray-900;
-    @apply hover:bg-gray-300;
-    @apply focus:ring-gray-500;
-  }
-
-  .btn--danger {
-    @apply bg-red-600 text-white;
-    @apply hover:bg-red-700;
-    @apply focus:ring-red-500;
-  }
-
-  .btn--ghost {
-    @apply bg-transparent text-gray-700;
-    @apply hover:bg-gray-100;
-    @apply focus:ring-gray-500;
-  }
-
-  .btn--sm {
-    @apply px-3 py-1.5 text-sm;
-  }
-
-  .btn--md {
-    @apply px-4 py-2 text-base;
-  }
-
-  .btn--lg {
-    @apply px-6 py-3 text-lg;
-  }
-
-  .form-input {
-    @apply block w-full px-3 py-2;
-    @apply border border-gray-300 rounded-md;
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
-    @apply disabled:bg-gray-100 disabled:cursor-not-allowed;
-  }
-
-  .form-label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
-  }
-
-  .form-error {
-    @apply text-sm text-red-600 mt-1;
-  }
-
-  .card {
-    @apply bg-white rounded-lg shadow-md p-6;
-  }
-
-  .table {
-    @apply min-w-full divide-y divide-gray-200;
-  }
-
-  .table th {
-    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
-  }
-
-  .table td {
-    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
-  }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
 }
 
-/* Utility styles */
-@layer utilities {
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
+/* Dark mode scrollbar */
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+    background: #374151;
+}
 
-  .not-sr-only {
-    position: static;
-    width: auto;
-    height: auto;
-    padding: 0;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
-  }
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #6b7280;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Loading animation */
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Pulse animation for status indicators */
+.pulse-green {
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.pulse-red {
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
