@@ -1,6 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-const StatusCard = ({ title, status, value, icon, color = 'blue', loading = false }) => {
+interface StatusCardProps {
+  title: string;
+  status?: string;
+  value: string;
+  icon: string;
+  color?: 'blue' | 'green' | 'red' | 'yellow';
+  loading?: boolean;
+}
+
+const StatusCard = ({ title, status, value, icon, color = 'blue', loading = false }: StatusCardProps) => {
   return (
     <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
       <div className="p-5">

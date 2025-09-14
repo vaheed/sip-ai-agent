@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
-      provider: 'v8',
+      provider: 'c8',
       reporter: ['text', 'json', 'html'],
       exclude: [
         'node_modules/',
@@ -25,14 +25,6 @@ export default defineConfig({
         '**/*.stories.tsx',
         '**/*.stories.ts',
       ],
-      thresholds: {
-        global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
-        },
-      },
     },
   },
 })

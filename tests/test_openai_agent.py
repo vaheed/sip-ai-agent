@@ -210,7 +210,7 @@ class TestOpenAIAgent:
     async def test_websocket_connection_handling(self, mock_agent):
         """Test WebSocket connection handling."""
         # Mock WebSocket connection
-        with patch("openai_agent.websockets.connect") as mock_connect:
+        with patch("app.openai_agent.websockets.connect") as mock_connect:
             mock_ws = AsyncMock()
             mock_ws.close_code = None
             mock_connect.return_value.__aenter__.return_value = mock_ws
@@ -293,7 +293,7 @@ class TestOpenAIAgentIntegration:
             mock_call.playback_audio = Mock()
 
             # Mock WebSocket connection
-            with patch("openai_agent.websockets.connect") as mock_connect:
+            with patch("app.openai_agent.websockets.connect") as mock_connect:
                 mock_ws = AsyncMock()
                 mock_ws.close_code = None
                 mock_ws.send = AsyncMock()
@@ -338,7 +338,7 @@ class TestOpenAIAgentIntegration:
         mock_agent.is_active = True
 
         # Mock metrics
-        with patch("openai_agent.get_metrics") as mock_get_metrics:
+        with patch("app.openai_agent.get_metrics") as mock_get_metrics:
             mock_metrics = Mock()
             mock_get_metrics.return_value = mock_metrics
 

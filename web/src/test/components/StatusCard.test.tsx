@@ -1,8 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
+interface StatusCardProps {
+  title: string;
+  status?: string;
+  value: string;
+  icon: string;
+  color?: 'blue' | 'green' | 'red' | 'yellow';
+  loading?: boolean;
+}
+
 // Mock component for testing
-const StatusCard = ({ title, status, value, icon, color = 'blue', loading = false }) => {
+const StatusCard = ({ title, status, value, icon, color = 'blue', loading = false }: StatusCardProps) => {
   // Suppress unused parameter warning for color
   void color;
   return (
