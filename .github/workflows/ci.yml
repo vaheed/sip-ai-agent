@@ -186,7 +186,7 @@ jobs:
     - name: Start dev server
       run: |
         npm run dev &
-        sleep 10
+        sleep 15
         curl -f http://localhost:3000 || exit 1
       env:
         PORT: 3000
@@ -209,6 +209,7 @@ jobs:
         path: |
           ./web/test-results/
           ./web/playwright-report/
+          ./web/pa11y-screenshots/
         retention-days: 30
 
   # Docker Build and Test
