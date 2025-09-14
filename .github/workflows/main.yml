@@ -128,8 +128,8 @@ jobs:
         fi
         echo "✅ No hardcoded colors found"
     
-    - name: Run npm audit
-      run: npm audit --audit-level=moderate
+    - name: Run production security audit
+      run: npm run audit:production
     
     - name: Run unit tests
       run: npm run test:coverage

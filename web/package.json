@@ -22,6 +22,7 @@
     "a11y": "pa11y-ci",
     "design-tokens": "echo 'Design tokens validation passed'",
     "visual-regression": "echo 'Visual regression tests passed'",
+    "audit:production": "node scripts/audit-production.js",
     "quality": "npm run lint && npm run stylelint && npm run test"
   },
   "dependencies": {
