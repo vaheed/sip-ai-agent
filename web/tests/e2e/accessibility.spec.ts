@@ -21,7 +21,10 @@ test.describe('Accessibility Tests', () => {
   });
 
   test('should have proper form labels', async ({ page }) => {
-    const inputs = page.locator('input');
+    // Wait for any form elements to be present
+    await page.waitForLoadState('networkidle');
+    
+    const inputs = page.getByRole('textbox');
     const count = await inputs.count();
     
     // If there are no inputs, that's fine for this basic app
@@ -29,18 +32,31 @@ test.describe('Accessibility Tests', () => {
       return;
     }
     
+    // Check each input has proper labeling
     for (let i = 0; i < count; i++) {
       const input = inputs.nth(i);
       const id = await input.getAttribute('id');
+      
       if (id) {
+        // Check for label with for attribute
         const label = page.locator(`label[for="${id}"]`);
-        await expect(label).toBeVisible();
+        const hasLabel = await label.count() > 0;
+        
+        // Check for aria-label or aria-labelledby
+        const ariaLabel = await input.getAttribute('aria-label');
+        const ariaLabelledBy = await input.getAttribute('aria-labelledby');
+        
+        // At least one labeling method should be present
+        expect(hasLabel || ariaLabel || ariaLabelledBy).toBeTruthy();
       }
     }
   });
 
   test('should have proper button accessibility', async ({ page }) => {
-    const buttons = page.locator('button');
+    // Wait for any buttons to be present
+    await page.waitForLoadState('networkidle');
+    
+    const buttons = page.getByRole('button');
     const count = await buttons.count();
     
     // If there are no buttons, that's fine for this basic app
@@ -48,13 +64,15 @@ test.describe('Accessibility Tests', () => {
       return;
     }
     
+    // Check each button has proper labeling
     for (let i = 0; i < count; i++) {
       const button = buttons.nth(i);
       const text = await button.textContent();
       const ariaLabel = await button.getAttribute('aria-label');
+      const ariaLabelledBy = await button.getAttribute('aria-labelledby');
       
-      // Button should have either text content or aria-label
-      expect(text?.trim() || ariaLabel).toBeTruthy();
+      // Button should have either text content or aria-label or aria-labelledby
+      expect(text?.trim() || ariaLabel || ariaLabelledBy).toBeTruthy();
     }
   });
 

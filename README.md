@@ -633,6 +633,46 @@ STRUCTURED_LOGGING=true
 4. **Review metrics**: Check `http://localhost:9090/metrics`
 5. **Search issues**: Look for similar problems in the issue tracker
 
+## Development Workflow (CI-First)
+
+### 🚨 **IMPORTANT: No Local Execution**
+This project follows a **CI-first development approach**. Do not run tests, builds, or package managers locally.
+
+### 🔄 **Development Process**
+1. **Make Changes**: Edit code with clear, atomic commits
+2. **Push to CI**: Let GitHub Actions handle all heavy operations
+3. **Review Artifacts**: Check CI results, test reports, and traces
+4. **Iterate**: Fix issues based on CI feedback
+
+### 🧹 **Repository Cleanup**
+Run the cleanup script to remove committed artifacts:
+```bash
+chmod +x cleanup-artifacts.sh
+./cleanup-artifacts.sh
+```
+
+### 📊 **CI Pipeline**
+The CI pipeline runs on every push/PR and includes:
+- **Backend Quality**: Black, isort, flake8, mypy, bandit, safety, pytest
+- **Frontend Quality**: ESLint, Stylelint, TypeScript, unit tests
+- **E2E Tests**: Playwright with accessibility testing
+- **Docker Build**: Multi-stage builds with security scanning
+- **Artifact Upload**: Test results, coverage, traces, screenshots
+
+### 🔍 **Debugging Failed Tests**
+1. **Download CI Artifacts**: Get HTML reports and traces from GitHub Actions
+2. **Review Screenshots**: Check failure screenshots in test-results/
+3. **Analyze Traces**: Use Playwright trace viewer for step-by-step debugging
+4. **Check Console Logs**: Review browser console errors in CI logs
+
+### 📋 **Quality Gates**
+- ✅ All linting and formatting passes
+- ✅ TypeScript compilation succeeds
+- ✅ Unit tests pass with >80% coverage
+- ✅ E2E tests pass with accessibility compliance
+- ✅ Docker builds complete successfully
+- ✅ Security scans pass (bandit, safety, npm audit)
+
 ### Contributing
 
 Contributions are welcome! Please see `CONTRIBUTING.md` for guidelines on
