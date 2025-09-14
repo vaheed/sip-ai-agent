@@ -11,30 +11,39 @@
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <style>
+        :root {
+            --scrollbar-track-light: #f1f1f1;
+            --scrollbar-thumb-light: #c1c1c1;
+            --scrollbar-thumb-hover-light: #a8a8a8;
+            --scrollbar-track-dark: #374151;
+            --scrollbar-thumb-dark: #6b7280;
+            --scrollbar-thumb-hover-dark: #9ca3af;
+        }
+
         /* Custom scrollbar */
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: var(--scrollbar-track-light);
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
+            background: var(--scrollbar-thumb-light);
             border-radius: 3px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #a8a8a8;
+            background: var(--scrollbar-thumb-hover-light);
         }
         
         /* Dark mode scrollbar */
         .dark .custom-scrollbar::-webkit-scrollbar-track {
-            background: #374151;
+            background: var(--scrollbar-track-dark);
         }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #6b7280;
+            background: var(--scrollbar-thumb-dark);
         }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #9ca3af;
+            background: var(--scrollbar-thumb-hover-dark);
         }
 
         /* Loading animation */

@@ -18,6 +18,7 @@ export default defineConfig({
       '**/dist/**',
       '**/tests/e2e/**',
       '**/e2e-tests/**',
+      '**/tests/disabled/**',
       '**/*.config.*',
     ],
     coverage: {
