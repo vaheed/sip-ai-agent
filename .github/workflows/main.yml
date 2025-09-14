@@ -236,7 +236,7 @@ jobs:
     
     - name: Test Web UI configuration validation
       run: |
-        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent-web:test python -c "from config import Settings; s = Settings(); print('Web UI configuration validation passed')"
+        docker run --rm -e SIP_DOMAIN=test.com -e SIP_USER=1001 -e SIP_PASS=test -e OPENAI_API_KEY=sk-test -e AGENT_ID=va-test sip-ai-agent-web:test python -c "from app.config import Settings; s = Settings(); print('Web UI configuration validation passed')"
 
   # Build and Push Docker Images (only on main branch)
   build-and-push:
