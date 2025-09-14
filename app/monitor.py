@@ -133,14 +133,23 @@ class Monitor:
                 <title>SIP AI Agent Monitor</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
+                    :root {
+                        --color-gray-50: #f9fafb;
+                        --color-gray-100: #f3f4f6;
+                        --color-gray-700: #374151;
+                        --color-gray-800: #1f2937;
+                        --color-success-500: #22c55e;
+                        --color-error-500: #ef4444;
+                        --color-gray-600: #4b5563;
+                    }
                     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
                     .container { max-width: 1200px; margin: 0 auto; }
-                    .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                    .card { background: var(--color-gray-50); border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                     .status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
-                    .status.green { background-color: #4CAF50; }
-                    .status.red { background-color: #F44336; }
-                    .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
-                    h1, h2 { color: #333; }
+                    .status.green { background-color: var(--color-success-500); }
+                    .status.red { background-color: var(--color-error-500); }
+                    .logs { background: var(--color-gray-800); color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
+                    h1, h2 { color: var(--color-gray-700); }
                     .refresh { margin-bottom: 20px; }
                 </style>
             </head>
@@ -229,15 +238,25 @@ class Monitor:
                 <title>AI Agent Dashboard</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
+                    :root {
+                        --color-gray-50: #f9fafb;
+                        --color-gray-100: #f3f4f6;
+                        --color-gray-200: #e5e7eb;
+                        --color-gray-300: #d1d5db;
+                        --color-gray-700: #374151;
+                        --color-gray-800: #1f2937;
+                        --color-success-500: #22c55e;
+                        --color-success-600: #16a34a;
+                    }
                     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.5; }
                     .container { max-width: 1200px; margin: 0 auto; }
-                    .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                    .card { background: var(--color-gray-50); border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                     table { width: 100%; border-collapse: collapse; }
-                    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-                    .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
-                    input[type="text"] { padding: 8px; margin-bottom: 10px; border-radius: 3px; border: 1px solid #ccc; }
-                    button { padding: 10px 20px; background-color: #4CAF50; color: #fff; border: none; border-radius: 3px; cursor: pointer; }
-                    button:hover { background-color: #45a049; }
+                    th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--color-gray-200); }
+                    .logs { background: var(--color-gray-800); color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
+                    input[type="text"] { padding: 8px; margin-bottom: 10px; border-radius: 3px; border: 1px solid var(--color-gray-300); }
+                    button { padding: 10px 20px; background-color: var(--color-success-500); color: #fff; border: none; border-radius: 3px; cursor: pointer; }
+                    button:hover { background-color: var(--color-success-600); }
                 </style>
             </head>
             <body>
