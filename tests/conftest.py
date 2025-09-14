@@ -214,7 +214,7 @@ def mock_agent():
         mock_settings.openai_voice = OpenAIVoice.ALLOY
         mock_get_settings.return_value = mock_settings
 
-        from openai_agent import OpenAIAgent
+        from app.openai_agent import OpenAIAgent
 
         agent = OpenAIAgent("test-correlation-id")
         agent.ws = None  # Will be set in individual tests

@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 
 // Mock component for testing
 const StatusCard = ({ title, status, value, icon, color = 'blue', loading = false }) => {
+  // Suppress unused parameter warning for color
+  void color;
   return (
     <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
       <div className="p-5">
