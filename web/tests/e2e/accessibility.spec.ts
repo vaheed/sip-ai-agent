@@ -3,14 +3,12 @@ import { test, expect } from '@playwright/test';
 test.describe('Accessibility Tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // Wait for the page to be fully loaded
-    await page.waitForLoadState('networkidle');
     
     // Wait for the page to have some content (either static HTML or React-rendered)
     await page.waitForFunction(() => {
       const body = document.body;
       return body && body.textContent && body.textContent.length > 100;
-    }, { timeout: 15000 });
+    }, { timeout: 10000 });
     
     // Debug: Log page content to help diagnose issues
     const title = await page.title();

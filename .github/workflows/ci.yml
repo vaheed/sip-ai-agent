@@ -96,6 +96,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+    
     - name: Run E2E tests
       run: npm run test:e2e
       continue-on-error: true
