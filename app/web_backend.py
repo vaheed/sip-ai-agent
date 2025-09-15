@@ -125,12 +125,25 @@ async def auth_status(current_user: dict = Depends(get_current_user)):
 @app.get("/api/status")
 async def get_system_status():
     """Get current system status."""
+    global api_handler
+    if api_handler is None:
+        # Initialize for testing
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_system_status()
 
 
 @app.get("/api/logs")
 async def get_logs():
     """Get system logs."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_logs()
 
 
@@ -138,18 +151,36 @@ async def get_logs():
 @app.get("/api/call_history")
 async def get_call_history():
     """Get call history."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_call_history()
 
 
 @app.get("/api/call_history/csv")
 async def export_call_history_csv():
     """Export call history as CSV."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.export_call_history_csv()
 
 
 @app.get("/api/call_history/statistics")
 async def get_call_statistics():
     """Get call statistics for analytics."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_call_statistics()
 
 
@@ -157,6 +188,12 @@ async def get_call_statistics():
 @app.get("/api/config")
 async def get_configuration(current_user: dict = Depends(get_current_user)):
     """Get current configuration."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_configuration(current_user)
 
 
@@ -166,12 +203,24 @@ async def update_configuration(
     current_user: dict = Depends(get_current_user)
 ):
     """Update configuration."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.update_configuration(config_data, current_user)
 
 
 @app.post("/api/config/reload")
 async def reload_configuration(current_user: dict = Depends(get_current_user)):
     """Reload configuration."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.reload_configuration(current_user)
 
 
@@ -179,6 +228,12 @@ async def reload_configuration(current_user: dict = Depends(get_current_user)):
 @app.get("/api/system/metrics")
 async def get_system_metrics():
     """Get real-time system metrics for admin dashboard."""
+    global api_handler
+    if api_handler is None:
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+        api_handler = APIHandler(monitor)
     return await api_handler.get_system_metrics()
 
 
@@ -195,10 +250,23 @@ async def websocket_endpoint(websocket):
 async def health_check():
     """Health check endpoint for container orchestration."""
     try:
+        # Get health report from health monitor
+        from .health import get_health_monitor
+        health_monitor = get_health_monitor()
+        health_report = await health_monitor.run_health_checks()
+        
         return {
-            "status": "healthy",
-            "timestamp": time.time(),
+            "status": health_report.overall_status.value,
+            "timestamp": health_report.timestamp,
+            "uptime_seconds": health_report.uptime_seconds,
             "version": "1.0.0",
+            "checks": {
+                check.name: {
+                    "status": check.status.value,
+                    "message": check.message,
+                    "details": check.details
+                } for check in health_report.checks
+            },
             "services": {
                 "web_backend": "healthy",
                 "monitor": "healthy" if monitor else "unhealthy",
@@ -213,7 +281,7 @@ async def health_check():
 def start_web_backend(host: str = "0.0.0.0", port: int = 8080):  # nosec B104
     """Start the web backend server."""
     logger.info("Starting web backend server", host=host, port=port)
-    uvicorn.run("web_backend_new:app", host=host, port=port, reload=False, log_level="info")
+    uvicorn.run("app.web_backend:app", host=host, port=port, reload=False, log_level="info")
 
 
 if __name__ == "__main__":

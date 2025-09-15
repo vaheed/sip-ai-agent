@@ -38,10 +38,24 @@ class SystemMonitor:
             # Get current settings
             settings = get_settings()
             
+            # Extract SIP registration status from health report
+            sip_registered = False
+            if hasattr(health_report, 'checks'):
+                for check in health_report.checks:
+                    if check.name == "sip_registration" and check.status.value == "healthy":
+                        sip_registered = True
+                        break
+            elif isinstance(health_report, dict):
+                sip_registration = health_report.get("sip_registration", {})
+                if isinstance(sip_registration, dict):
+                    sip_registered = sip_registration.get("status") == "healthy"
+                else:
+                    sip_registered = sip_registration == "healthy"
+            
             return {
                 "timestamp": time.time(),
                 "uptime_seconds": time.time() - self.start_time,
-                "sip_registered": health_report.get("sip_registration", {}).get("status") == "healthy",
+                "sip_registered": sip_registered,
                 "active_calls": self._get_active_calls(),
                 "api_tokens_used": call_stats.get("total_tokens", 0),
                 "total_calls": call_stats.get("total_calls", 0),
@@ -52,7 +66,7 @@ class SystemMonitor:
                 "health_status": health_report,
                 "configuration": {
                     "sip_domain": settings.sip_domain,
-                    "openai_mode": settings.openai_mode,
+                    "openai_mode": settings.openai_mode.value if hasattr(settings.openai_mode, 'value') else str(settings.openai_mode),
                     "openai_model": settings.openai_model,
                     "audio_sample_rate": settings.audio_sample_rate,
                 }
@@ -62,6 +76,14 @@ class SystemMonitor:
             return {
                 "timestamp": time.time(),
                 "uptime_seconds": time.time() - self.start_time,
+                "sip_registered": False,
+                "active_calls": [],
+                "api_tokens_used": 0,
+                "total_calls": 0,
+                "successful_calls": 0,
+                "failed_calls": 0,
+                "average_call_duration": 0.0,
+                "total_cost": 0.0,
                 "error": str(e)
             }
     

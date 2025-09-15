@@ -39,7 +39,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'python -m http.server 8080',
+    command: 'python -m app.web_backend',
     url: 'http://localhost:8080',
     reuseExistingServer: true, // Always reuse existing server to avoid conflicts
     timeout: 120 * 1000, // 2 minutes
