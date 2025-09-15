@@ -38,45 +38,125 @@ for ultra‑low‑latency speech‑to‑speech interactions.
 * **Developer Experience**: Typed configuration, comprehensive testing, pre-commit hooks, CI/CD pipeline
 * **Quality Assurance**: Automated UI/UX testing, accessibility compliance, performance monitoring
 
-## Architecture
+## 🏗️ Architecture
 
 The SIP AI Agent follows a modular architecture with clear separation of concerns:
 
 ```mermaid
-graph TD
-    A[agent.py - SIPAIAgent] --> B[SIPClient]
-    A --> C[HealthMonitor]
-    A --> D[MetricsCollector]
-    A --> E[CallHistoryManager]
-    B --> F[OpenAIAgent]
-    F --> G[OpenAI API]
+graph TB
+    subgraph "Frontend Layer"
+        UI[React Web Dashboard]
+        ADMIN[Admin Dashboard]
+        COMPONENTS[Modular Components]
+    end
     
-    H[Web Dashboard] --> I[FastAPI Backend]
-    I --> J[WebSocket Events]
-    I --> K[Call History API]
-    I --> L[Config Management]
-    I --> M[Authentication]
+    subgraph "Backend Layer"
+        FASTAPI[FastAPI Backend]
+        AUTH[Authentication]
+        API[API Routes]
+        WS[WebSocket Handler]
+    end
     
-    H --> B
-    H --> C
-    H --> D
-    H --> E
+    subgraph "Core Services"
+        AGENT[SIP AI Agent]
+        SIP[SIP Client]
+        OPENAI[OpenAI Agent]
+        MONITOR[System Monitor]
+    end
     
-    N[User calls SIP] --> B
-    B --> F
-    F --> O[Process Audio]
-    O --> G
-    G --> P[AI Response]
-    P --> F
-    F --> Q[Audio Output]
-    Q --> B
-    B --> R[Caller hears response]
+    subgraph "Infrastructure"
+        CONFIG[Config Manager]
+        HEALTH[Health Monitor]
+        METRICS[Metrics Collector]
+        HISTORY[Call History]
+    end
     
-    B --> E
-    E --> K
+    subgraph "External Systems"
+        PBX[SIP PBX]
+        OPENAI_API[OpenAI API]
+        PROMETHEUS[Prometheus]
+    end
+    
+    UI --> FASTAPI
+    ADMIN --> FASTAPI
+    COMPONENTS --> UI
+    
+    FASTAPI --> AUTH
+    FASTAPI --> API
+    FASTAPI --> WS
+    
+    AGENT --> SIP
+    AGENT --> OPENAI
+    AGENT --> MONITOR
+    
+    SIP --> PBX
+    OPENAI --> OPENAI_API
+    
+    MONITOR --> HEALTH
+    MONITOR --> METRICS
+    MONITOR --> HISTORY
+    MONITOR --> CONFIG
+    
+    METRICS --> PROMETHEUS
+    
+    API --> AGENT
+    WS --> MONITOR
 ```
 
-### Component Overview
+### 📁 Project Structure
+
+```
+sip-ai-agent/
+├── app/                          # Backend Application
+│   ├── agent.py                  # Main application controller
+│   ├── sip_client.py             # SIP protocol handling
+│   ├── openai_agent.py           # OpenAI API integration
+│   ├── config.py                 # Configuration management
+│   ├── logging_config.py         # Structured logging
+│   ├── auth.py                   # Authentication & sessions
+│   ├── api_routes.py             # REST API endpoints
+│   ├── websocket_handler.py      # WebSocket connections
+│   ├── config_manager.py         # Configuration file management
+│   ├── system_monitor.py         # System monitoring
+│   ├── monitor.py                # Monitoring coordinator
+│   ├── web_backend.py            # FastAPI application
+│   ├── health.py                 # Health monitoring
+│   ├── metrics.py                # Prometheus metrics
+│   ├── call_history.py           # Call tracking & analytics
+│   └── start_web_ui.py           # Web UI startup
+├── web/                          # Frontend Application
+│   ├── index.html                # Main React application
+│   ├── js/components/            # Modular React components
+│   │   ├── admin/                # Admin dashboard components
+│   │   │   ├── metrics-cards.js  # Key metrics display
+│   │   │   ├── system-health.js  # System health overview
+│   │   │   ├── charts-analytics.js # Charts and analytics
+│   │   │   └── activity-alerts.js # Activity and alerts
+│   │   ├── admin-dashboard.js    # Main admin dashboard
+│   │   ├── call-history.js       # Call history component
+│   │   ├── logs-viewer.js        # Logs viewer component
+│   │   ├── configuration.js      # Configuration component
+│   │   ├── statistics.js         # Statistics component
+│   │   └── common.js             # Shared utilities
+│   ├── tests/e2e/               # End-to-end tests
+│   └── package.json              # Frontend dependencies
+├── tests/                        # Backend Tests
+│   ├── test_auth.py             # Authentication tests
+│   ├── test_config_manager.py   # Config management tests
+│   ├── test_system_monitor.py   # System monitoring tests
+│   ├── test_web_backend.py      # Web backend tests
+│   └── test_web_backend_extended.py # Extended backend tests
+├── scripts/                      # Utility Scripts
+├── docker-compose.yml            # Development environment
+├── docker-compose.prod.yml       # Production environment
+├── Dockerfile                    # Application container
+├── Dockerfile.web                # Web UI container
+├── env.example                   # Configuration template
+├── requirements.txt              # Python dependencies
+└── README.md                     # This file
+```
+
+### 🔧 Component Overview
 
 #### Core SIP Components
 - **`agent.py`** - Main application controller and orchestrator
@@ -85,17 +165,24 @@ graph TD
 - **`config.py`** - Configuration management with Pydantic
 - **`logging_config.py`** - Structured logging with correlation IDs
 
+#### Authentication & Security
+- **`auth.py`** - Authentication, session management, and security
+- **`api_routes.py`** - REST API endpoints with proper authentication
+- **`websocket_handler.py`** - WebSocket connections and real-time updates
+
 #### Monitoring & Analytics
 - **`health.py`** - System health monitoring and diagnostics
 - **`metrics.py`** - Prometheus metrics collection
-- **`monitor.py`** - System monitoring and configuration management
+- **`system_monitor.py`** - System monitoring and health checks
+- **`monitor.py`** - Monitoring coordinator and orchestration
 - **`call_history.py`** - Call tracking, analytics, and persistence
+- **`config_manager.py`** - Configuration file management
 
 #### Web Interface
 - **`web_backend.py`** - FastAPI REST API and WebSocket server
 - **`start_web_ui.py`** - Web UI startup and orchestration
 - **`web/index.html`** - React-based frontend dashboard
-- **`web/package.json`** - Frontend dependencies and build tools
+- **`web/js/components/`** - Modular React components for better maintainability
 
 #### Development & Quality
 - **`demo_calls.py`** - Demo data generation for testing
@@ -198,45 +285,57 @@ graph TD
 
 The modern web dashboard provides a comprehensive interface for monitoring and managing the SIP AI Agent:
 
-### 🎯 Live Status Monitoring
-* **SIP Registration Status** — Real-time SIP registration state and connection health
-* **Active Calls** — Current active call count with detailed call information
-* **API Token Usage** — OpenAI API token consumption tracking and cost analytics
-* **System Uptime** — Service uptime, performance metrics, and resource usage
-* **Real-time Logs** — Live log streaming with WebSocket, correlation IDs, and filtering
+### 🎯 Dashboard Features
 
-### 📞 Call History & Analytics
-* **Call Tracking** — Complete call history with start/end times, duration, and status
-* **Duration Analytics** — Call duration tracking, success rates, and performance statistics
-* **CSV Export** — Export call history data for analysis and reporting
-* **Audio Quality Metrics** — Packet loss, jitter, latency, and MOS scores
-* **Token & Cost Tracking** — Per-call token usage and cost analysis
+#### **Overview Tab**
+- **Live Status**: SIP registration status, active calls, system uptime
+- **Real-time Metrics**: API token usage, call statistics, performance data
+- **Quick Actions**: Start/stop services, view logs, access configuration
 
-### ⚙️ Configuration Management
-* **Form-based Editor** — Easy configuration editing for all SIP and OpenAI settings
-* **Live Validation** — Input validation and error handling for configuration changes
-* **Persistent Storage** — Changes saved directly to `.env` file
-* **Safe Reload** — Configuration reload endpoint with restart notifications
-* **Environment Variables** — Support for all SIP, OpenAI, audio, and monitoring settings
+#### **Admin Dashboard Tab** 🆕
+- **System Metrics**: CPU, memory, disk usage with real-time charts
+- **Call Analytics**: Success rates, duration trends, cost analysis
+- **Resource Monitoring**: Network stats, process information, system health
+- **Visual Charts**: Bar charts, pie charts, and trend graphs
+- **Activity Feed**: Recent system events and alerts
+- **Performance Metrics**: Response times, throughput, error rates
 
-### 🔐 Authentication & Security
-* **Session Management** — HTTP-only cookies with secure defaults
-* **Protected Routes** — All admin functions require authentication
-* **CSRF Protection** — SameSite cookie configuration
-* **Default Credentials** — admin/admin123 (change in production)
+#### **Call History Tab**
+- **Complete Call Log**: All calls with timestamps, duration, status
+- **Advanced Filtering**: Filter by date, status, duration, tokens used
+- **CSV Export**: Download call history for external analysis
+- **Search Functionality**: Find specific calls quickly
+- **Statistics Summary**: Total calls, success rates, average duration
 
-### 🎨 Modern UI/UX
-* **Dark/Light Theme** — Toggle between themes with persistence
-* **Responsive Design** — Works on desktop, tablet, and mobile devices
-* **Tailwind CSS** — Modern, clean styling with professional appearance
-* **Real-time Updates** — WebSocket-powered live updates for all metrics
-* **Intuitive Navigation** — Easy-to-use interface with clear information hierarchy
+#### **Logs Viewer Tab**
+- **Real-time Logs**: Live log streaming with WebSocket updates
+- **Log Levels**: Filter by INFO, WARNING, ERROR, DEBUG
+- **Search & Filter**: Find specific log entries quickly
+- **Auto-scroll**: Automatically follow new log entries
+- **Export Options**: Download logs for analysis
 
-### 📊 Demo Capabilities
-* **Demo Mode** — Run with simulated calls for testing and demonstration
-* **Historical Data** — Generate realistic call history for development
-* **Live Simulation** — Continuous call generation with realistic metrics
-* **Token Usage Simulation** — Realistic OpenAI token consumption patterns
+#### **Configuration Tab**
+- **SIP Settings**: Domain, user, password, SRTP, NAT traversal
+- **OpenAI Settings**: API key, mode, model, voice, temperature
+- **Audio Settings**: Sample rate, channels, frame duration
+- **System Settings**: Monitoring, logging, security options
+- **Live Validation**: Real-time configuration validation
+- **Safe Reload**: Apply changes without restart
+
+#### **Statistics Tab**
+- **Call Analytics**: Detailed statistics and trends
+- **Performance Metrics**: Response times, success rates
+- **Token Usage**: OpenAI API consumption and costs
+- **System Performance**: Resource usage, uptime, health
+
+### 🎨 UI/UX Features
+
+- **Dark/Light Theme**: Toggle between themes with persistence
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Real-time Updates**: WebSocket-powered live updates for all metrics
+- **Intuitive Navigation**: Easy-to-use interface with clear information hierarchy
+- **Error Handling**: Comprehensive error boundaries and user feedback
+- **Loading States**: Smooth loading indicators and skeleton screens
 
 ## FreePBX Integration
 
@@ -284,7 +383,50 @@ from the agent interface.  Because the agent registers as a normal SIP
 extension, any device on the PBX (softphone, hardphone or dialer) can reach
 it using the configured extension number.
 
-## Development
+## 🧪 Testing
+
+### Backend Testing
+
+The project includes comprehensive backend testing:
+
+```bash
+# Run all backend tests
+python3 -m pytest tests/ -v
+
+# Run specific test modules
+python3 -m pytest tests/test_auth.py -v
+python3 -m pytest tests/test_config_manager.py -v
+python3 -m pytest tests/test_system_monitor.py -v
+python3 -m pytest tests/test_web_backend.py -v
+
+# Run with coverage
+python3 -m pytest tests/ --cov=app --cov-report=html
+```
+
+### Frontend Testing
+
+```bash
+# Run E2E tests
+cd web
+npm run test:e2e
+
+# Run accessibility tests
+npm run test:a11y
+
+# Run Lighthouse performance tests
+npm run test:lighthouse
+```
+
+### Test Coverage
+
+- **Backend**: 76+ tests covering all modules
+- **Frontend**: E2E tests for all major components
+- **Authentication**: Comprehensive auth flow testing
+- **Configuration**: Config management and validation
+- **System Monitoring**: Health checks and metrics
+- **API Endpoints**: All REST API endpoints tested
+
+## 🔧 Development
 
 ### Local Development Setup
 

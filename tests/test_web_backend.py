@@ -62,9 +62,15 @@ def test_health_check(client):
 
 def test_frontend_serving(client):
     """Test frontend serving."""
+    # Test normal frontend serving
+    response = client.get("/")
+    assert response.status_code == 200
+    
+    # Test frontend serving when file not found
     with patch("builtins.open", Mock(side_effect=FileNotFoundError)):
         response = client.get("/")
-        assert response.status_code == 404
+        assert response.status_code == 500
+        assert "Failed to load frontend" in response.text
 
 
 def test_login(client):
@@ -88,10 +94,23 @@ def test_login_invalid_credentials(client):
 
 def test_logout(client):
     """Test logout."""
+    # Test logout without token (should fail)
     response = client.post("/api/auth/logout")
     assert response.status_code == 200
     data = response.json()
-    assert data["success"] is True
+    assert data["success"] is False
+    assert data["message"] == "No token provided"
+    
+    # Test logout with valid token
+    login_response = client.post("/api/auth/login", json={"username": "admin", "password": "admin123"})
+    assert login_response.status_code == 200
+    token = login_response.json()["token"]
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    logout_response = client.post("/api/auth/logout", headers=headers)
+    assert logout_response.status_code == 200
+    logout_data = logout_response.json()
+    assert logout_data["success"] is True
 
 
 def test_system_status(client, mock_call_history_manager, mock_monitor):

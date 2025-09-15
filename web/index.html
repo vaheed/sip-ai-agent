@@ -8,12 +8,11 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <style>
-
         /* Custom scrollbar */
         .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
@@ -73,6 +72,18 @@
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
     <div id="root"></div>
     
+    <!-- Load component files -->
+    <script src="/js/components/common.js"></script>
+    <script src="/js/components/admin/metrics-cards.js"></script>
+    <script src="/js/components/admin/system-health.js"></script>
+    <script src="/js/components/admin/charts-analytics.js"></script>
+    <script src="/js/components/admin/activity-alerts.js"></script>
+    <script src="/js/components/admin-dashboard.js"></script>
+    <script src="/js/components/call-history.js"></script>
+    <script src="/js/components/logs-viewer.js"></script>
+    <script src="/js/components/configuration.js"></script>
+    <script src="/js/components/statistics.js"></script>
+    
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
@@ -94,7 +105,7 @@
             (error) => Promise.reject(error)
         );
 
-        // Add response interceptor for auth errors
+        // Add response interceptor for auth errors and global error handling
         api.interceptors.response.use(
             (response) => response,
             (error) => {
@@ -102,6 +113,17 @@
                     localStorage.removeItem('session_token');
                     window.location.reload();
                 }
+                
+                // Enhanced error logging
+                console.error('API Error:', {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data,
+                    url: error.config?.url,
+                    method: error.config?.method,
+                    timestamp: new Date().toISOString()
+                });
+                
                 return Promise.reject(error);
             }
         );
@@ -137,13 +159,22 @@
                         }
                     };
 
-                    this.ws.onclose = () => {
-                        console.log('WebSocket disconnected');
+                    this.ws.onclose = (event) => {
+                        console.log('WebSocket disconnected', {
+                            code: event.code,
+                            reason: event.reason,
+                            wasClean: event.wasClean,
+                            timestamp: new Date().toISOString()
+                        });
                         this.handleReconnect();
                     };
 
                     this.ws.onerror = (error) => {
-                        console.error('WebSocket error:', error);
+                        console.error('WebSocket error:', {
+                            error: error,
+                            url: wsUrl,
+                            timestamp: new Date().toISOString()
+                        });
                     };
                 } catch (error) {
                     console.error('Failed to create WebSocket connection:', error);
@@ -154,9 +185,16 @@
             handleReconnect() {
                 if (this.reconnectAttempts < this.maxReconnectAttempts) {
                     this.reconnectAttempts++;
-                    console.log(`Attempting to reconnect WebSocket (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                    setTimeout(() => this.connect(), this.reconnectInterval);
-                    this.reconnectInterval *= 2; // Exponential backoff
+                    const delay = this.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
+                    console.log(`Attempting to reconnect WebSocket (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`);
+                    setTimeout(() => this.connect(), delay);
+                } else {
+                    console.error('Max reconnection attempts reached. WebSocket connection failed permanently.');
+                    // Notify all listeners about permanent failure
+                    this.listeners.forEach(callback => callback({
+                        type: 'connection_failed',
+                        message: 'WebSocket connection failed after maximum retry attempts'
+                    }));
                 }
             }
 
@@ -177,6 +215,77 @@
         }
 
         const wsManager = new WebSocketManager();
+
+        // Global Error Boundary Component
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                console.error('React Error Boundary caught an error:', error, errorInfo);
+                this.setState({
+                    error: error,
+                    errorInfo: errorInfo
+                });
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                            <div className="max-w-md w-full bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6">
+                                <div className="flex items-center mb-4">
+                                    <div className="flex-shrink-0">
+                                        <span className="text-2xl">⚠️</span>
+                                    </div>
+                                    <div className="ml-3">
+                                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                                            Something went wrong
+                                        </h3>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                    An unexpected error occurred. Please refresh the page to try again.
+                                </p>
+                                <div className="flex space-x-3">
+                                    <button
+                                        onClick={() => window.location.reload()}
+                                        className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                    >
+                                        Refresh Page
+                                    </button>
+                                    <button
+                                        onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+                                        className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                                    >
+                                        Try Again
+                                    </button>
+                                </div>
+                                {process.env.NODE_ENV === 'development' && this.state.error && (
+                                    <details className="mt-4">
+                                        <summary className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer">
+                                            Error Details
+                                        </summary>
+                                        <pre className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded overflow-auto">
+                                            {this.state.error.toString()}
+                                            {this.state.errorInfo.componentStack}
+                                        </pre>
+                                    </details>
+                                )}
+                            </div>
+                        </div>
+                    );
+                }
+
+                return this.props.children;
+            }
+        }
 
         // Login Component
         function Login({ onLogin }) {
@@ -210,7 +319,7 @@
                                 SIP AI Agent
                             </h2>
                             <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-                                Sign in to your account
+                                Sign in to your dashboard
                             </p>
                         </div>
                         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -222,10 +331,10 @@
                                         name="username"
                                         type="text"
                                         required
-                                        className="relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-800 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                                        placeholder="Username"
                                         value={credentials.username}
-                                        onChange={(e) => setCredentials({...credentials, username: e.target.value})}
+                                        onChange={(e) => setCredentials(prev => ({ ...prev, username: e.target.value }))}
+                                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-700 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                                        placeholder="Username"
                                     />
                                 </div>
                                 <div>
@@ -235,17 +344,19 @@
                                         name="password"
                                         type="password"
                                         required
-                                        className="relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-800 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                                        placeholder="Password"
                                         value={credentials.password}
-                                        onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+                                        onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+                                        className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-700 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                                        placeholder="Password"
                                     />
                                 </div>
                             </div>
 
                             {error && (
-                                <div className="text-red-600 dark:text-red-400 text-sm text-center">
+                                <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+                                    <div className="text-sm text-red-700 dark:text-red-300">
                                     {error}
+                                    </div>
                                 </div>
                             )}
 
@@ -253,7 +364,7 @@
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                                 >
                                     {loading ? 'Signing in...' : 'Sign in'}
                                 </button>
@@ -264,64 +375,12 @@
             );
         }
 
-        // Status Card Component
-        function StatusCard({ title, status, value, icon, color = 'blue', loading = false }) {
-            const statusColors = {
-                green: 'text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900',
-                red: 'text-red-600 bg-red-100 dark:text-red-400 dark:bg-red-900',
-                blue: 'text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900',
-                yellow: 'text-yellow-600 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900',
-            };
-
-            const statusClasses = {
-                online: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-                offline: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-                warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-            };
-
-            return (
-                <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-                    <div className="p-5">
-                        <div className="flex items-center">
-                            <div className="flex-shrink-0">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${statusColors[color]}`}>
-                                    {loading ? (
-                                        <div className="loading-spinner w-4 h-4 border-2 border-current border-t-transparent rounded-full"></div>
-                                    ) : (
-                                        icon
-                                    )}
-                                </div>
-                            </div>
-                            <div className="ml-5 w-0 flex-1">
-                                <dl>
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                                        {title}
-                                    </dt>
-                                    <dd className="flex items-baseline">
-                                        <div className="text-2xl font-semibold text-gray-900 dark:text-white">
-                                            {loading ? '...' : value}
-                                        </div>
-                                        {status && !loading && (
-                                            <div className="ml-2 flex items-baseline text-sm font-semibold">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClasses[status] || statusClasses.warning}`}>
-                                                    {status}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </dd>
-                                </dl>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
         // Main Dashboard Component
         function Dashboard() {
             const [darkMode, setDarkMode] = useState(false);
             const [systemStatus, setSystemStatus] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [activeTab, setActiveTab] = useState('overview');
 
             // Toggle dark mode
             const toggleDarkMode = () => {
@@ -393,8 +452,39 @@
                         </div>
                     </header>
 
+                    {/* Navigation Tabs */}
+                    <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex space-x-8">
+                                {[
+                                    { id: 'overview', label: 'Overview', icon: '📊' },
+                                    { id: 'admin', label: 'Admin Dashboard', icon: '🎛️' },
+                                    { id: 'calls', label: 'Call History', icon: '📞' },
+                                    { id: 'logs', label: 'Logs', icon: '📝' },
+                                    { id: 'config', label: 'Configuration', icon: '⚙️' },
+                                    { id: 'stats', label: 'Statistics', icon: '📈' }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                                            activeTab === tab.id
+                                                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                        }`}
+                                    >
+                                        <span className="mr-2">{tab.icon}</span>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </nav>
+
                     {/* Main Content */}
                     <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                        {activeTab === 'overview' && (
+                            <>
                         {/* Status Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                             <StatusCard
@@ -407,21 +497,24 @@
                             />
                             <StatusCard
                                 title="Active Calls"
+                                        status={systemStatus?.active_calls?.length > 0 ? 'online' : 'offline'}
                                 value={systemStatus?.active_calls?.length || 0}
                                 icon="📱"
-                                color="blue"
+                                        color={systemStatus?.active_calls?.length > 0 ? 'green' : 'blue'}
                                 loading={loading}
                             />
                             <StatusCard
                                 title="API Tokens Used"
-                                value={systemStatus?.api_tokens_used || 0}
-                                icon="🔑"
-                                color="yellow"
+                                        status="online"
+                                        value={systemStatus?.api_tokens_used?.toLocaleString() || '0'}
+                                        icon="🎯"
+                                        color="blue"
                                 loading={loading}
                             />
                             <StatusCard
-                                title="Uptime"
-                                value={systemStatus?.uptime_seconds ? `${Math.floor(systemStatus.uptime_seconds / 3600)}h ${Math.floor((systemStatus.uptime_seconds % 3600) / 60)}m` : '0h 0m'}
+                                        title="System Uptime"
+                                        status="online"
+                                        value={systemStatus?.uptime_seconds ? `${Math.floor(systemStatus.uptime_seconds / 3600)}h` : '0h'}
                                 icon="⏱️"
                                 color="blue"
                                 loading={loading}
@@ -438,6 +531,14 @@
                                 dark/light theme support, and comprehensive monitoring capabilities.
                             </p>
                         </div>
+                            </>
+                        )}
+
+                        {activeTab === 'admin' && <AdminDashboard />}
+                        {activeTab === 'calls' && <CallHistory />}
+                        {activeTab === 'logs' && <LogsViewer />}
+                        {activeTab === 'config' && <Configuration />}
+                        {activeTab === 'stats' && <StatisticsDashboard />}
                     </main>
                 </div>
             );
@@ -476,8 +577,13 @@
             return authenticated ? <Dashboard /> : <Login onLogin={() => setAuthenticated(true)} />;
         }
 
-        // Render the app
-        ReactDOM.render(<App />, document.getElementById('root'));
+        // Render the app with error boundary
+        ReactDOM.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>, 
+            document.getElementById('root')
+        );
     </script>
 </body>
 </html>
