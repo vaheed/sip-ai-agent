@@ -231,7 +231,6 @@ web/build/
 web/.next/
 web/out/
 
-# Package manager files
-web/package-lock.json
+# Package manager files (keep package-lock.json for CI)
 web/yarn.lock
 web/pnpm-lock.yaml

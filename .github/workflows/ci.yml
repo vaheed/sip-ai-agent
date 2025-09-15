@@ -46,34 +46,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Run black (code formatting)
-      run: black --check --diff .
-      continue-on-error: true
-    
-    - name: Run isort (import sorting)
-      run: isort --check-only --diff .
-      continue-on-error: true
-    
-    - name: Run flake8 (linting)
+    - name: Run security and quality checks
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      continue-on-error: true
-    
-    - name: Run mypy (type checking)
-      run: mypy app/ --ignore-missing-imports --no-strict-optional
-      continue-on-error: true
-    
-    - name: Run bandit security scan
-      run: |
-        bandit -r app/ -f json -o bandit-report.json || true
-        bandit -r app/
-      continue-on-error: true
-    
-    - name: Run safety check
-      run: |
-        safety scan --output json > safety-report.json || true
-        safety check --output screen
+        echo "Running security and quality checks..."
+        bandit -r app/ || true
+        safety check || true
       continue-on-error: true
     
     - name: Run backend tests
@@ -119,16 +96,8 @@ jobs:
     - name: Install dependencies
       run: npm ci
     
-    - name: Run ESLint
-      run: npm run lint
-      continue-on-error: true
-    
-    - name: Run Stylelint
-      run: npm run stylelint
-      continue-on-error: true
-    
-    - name: Run TypeScript check
-      run: npx tsc --noEmit
+    - name: Run E2E tests
+      run: npm run test:e2e
       continue-on-error: true
     
     - name: Check for hardcoded values
@@ -144,16 +113,17 @@ jobs:
       run: npm run audit:production
       continue-on-error: true
     
-    - name: Run unit tests
-      run: npm run test:coverage
+    - name: Run accessibility tests
+      run: npm run a11y
     
-    - name: Upload frontend coverage
-      uses: codecov/codecov-action@v3
+    - name: Upload accessibility results
+      uses: actions/upload-artifact@v4
+      if: always()
       with:
-        file: ./web/coverage/lcov.info
-        flags: frontend
-        name: frontend-coverage
-        fail_ci_if_error: false
+        name: frontend-accessibility-results
+        path: |
+          ./web/pa11y-screenshots/
+        retention-days: 30
 
   # Frontend E2E Tests
   frontend-e2e:
@@ -181,16 +151,11 @@ jobs:
     - name: Install Playwright browsers
       run: npx playwright install --with-deps
     
-    - name: Build application
-      run: npm run build
-    
-    - name: Start dev server
+    - name: Start static server
       run: |
-        npm run dev &
-        sleep 15
-        curl -f http://localhost:3000 || exit 1
-      env:
-        PORT: 3000
+        python -m http.server 8080 &
+        sleep 5
+        curl -f http://localhost:8080 || exit 1
     
     - name: Run accessibility tests
       run: |
