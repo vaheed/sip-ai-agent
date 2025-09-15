@@ -225,3 +225,13 @@ web/.vite/
 
 # TypeScript build info
 web/*.tsbuildinfo
+
+# React build artifacts (not used - static HTML only)
+web/build/
+web/.next/
+web/out/
+
+# Package manager files
+web/package-lock.json
+web/yarn.lock
+web/pnpm-lock.yaml

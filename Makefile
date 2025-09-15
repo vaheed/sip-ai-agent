@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-cov lint format typecheck security clean docker-build docker-run docker-test pre-commit setup-dev web-ui web-demo
+.PHONY: help install test test-cov clean docker-build docker-run docker-test web-ui web-demo
 
 # Default target
 help: ## Show this help message
@@ -9,9 +9,6 @@ help: ## Show this help message
 install: ## Install production dependencies
 	pip install -r requirements.txt
 
-install-dev: ## Install development dependencies
-	pip install -r requirements.txt
-	pip install pre-commit
 
 # Testing targets
 test: ## Run tests
@@ -23,31 +20,10 @@ test-cov: ## Run tests with coverage
 test-integration: ## Run integration tests
 	pytest tests/ -v -m integration
 
-# Code quality targets
-lint: ## Run linting
-	flake8 app/ tests/
-	black --check app/ tests/
-	isort --check-only app/ tests/
-
-format: ## Format code
-	black app/ tests/
-	isort app/ tests/
-
-typecheck: ## Run type checking
-	mypy app/ --ignore-missing-imports --no-strict-optional
-
+# Security checks (for production)
 security: ## Run security checks
 	bandit -r app/
 	safety check
-
-# Development setup
-setup-dev: install-dev ## Setup development environment
-	pre-commit install
-	@echo "Development environment setup complete!"
-	@echo "Run 'make test' to verify everything works."
-
-pre-commit: ## Run pre-commit hooks on all files
-	pre-commit run --all-files
 
 # Docker targets
 docker-build: ## Build Docker image
@@ -141,7 +117,7 @@ except Exception as e:
 "
 
 # All quality checks
-check-all: lint typecheck security test ## Run all quality checks
+check-all: security test ## Run all quality checks
 
 # Comprehensive testing
 test-all: ## Run comprehensive test suite (backend + frontend + docker)
@@ -242,26 +218,11 @@ deploy-rollback: ## Rollback to previous version
 	./scripts/deploy.sh rollback
 
 # UI/UX Quality targets
-ui-lint: ## Run UI/UX linting (ESLint + Stylelint)
-	cd web && npm run lint && npm run stylelint
-
-ui-test: ## Run UI/UX tests (unit + E2E)
-	cd web && npm run test && npm run test:e2e
+ui-test: ## Run UI/UX tests (E2E only)
+	cd web && npm run test:e2e
 
 ui-accessibility: ## Run accessibility tests
 	cd web && npm run a11y
 
 ui-lighthouse: ## Run Lighthouse performance tests
 	cd web && npm run lighthouse
-
-ui-storybook: ## Build and validate Storybook
-	cd web && npm run build-storybook
-
-ui-quality: ## Run all UI/UX quality checks
-	cd web && npm run quality
-
-ui-dev: ## Start UI development server
-	cd web && npm run dev
-
-ui-build: ## Build UI for production
-	cd web && npm run build

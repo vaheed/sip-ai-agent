@@ -59,6 +59,7 @@ class WebUIService:
 
         # Start SIP agent
         self.sip_agent = SIPAIAgent()
+        await self.sip_agent.initialize()
         await self.sip_agent.start()
 
         self.is_running = True
@@ -112,7 +113,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--demo":
         logger.info("Running with demo call simulation")
         # Import and run demo calls in background
-        from demo_calls import CallSimulator
+        from .demo_calls import CallSimulator
 
         async def run_demo():
             simulator = CallSimulator()
