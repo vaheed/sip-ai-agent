@@ -116,7 +116,11 @@ jobs:
       continue-on-error: true
     
     - name: Run accessibility tests
-      run: npm run a11y
+      run: |
+        # Start a simple HTTP server for accessibility testing
+        python -m http.server 8080 &
+        sleep 3
+        npm run a11y
     
     - name: Upload accessibility results
       uses: actions/upload-artifact@v4

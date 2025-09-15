@@ -14,6 +14,7 @@ import io
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -166,10 +167,41 @@ async def get_current_user(
 
 
 # FastAPI app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    # Startup
+    logger.info("Starting SIP AI Agent Web Backend")
+    
+    # Set monitor start time
+    monitor.start_time = time.time()
+    
+    # Start background task for system updates
+    asyncio.create_task(broadcast_system_updates())
+    
+    logger.info("Web backend started successfully")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down SIP AI Agent Web Backend")
+    
+    # Stop background tasks
+    if broadcast_task:
+        broadcast_task.cancel()
+        try:
+            await broadcast_task
+        except asyncio.CancelledError:
+            pass
+    
+    logger.info("Web backend shutdown complete")
+
+
 app = FastAPI(
     title="SIP AI Agent Web UI",
     description="Web interface for SIP AI Agent monitoring and configuration",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -540,24 +572,6 @@ async def health_check():
         return {"status": "unhealthy", "error": str(e)}, 503
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the web backend on startup."""
-    logger.info("Starting SIP AI Agent Web Backend")
-
-    # Set monitor start time
-    monitor.start_time = time.time()
-
-    # Start background task for system updates
-    asyncio.create_task(broadcast_system_updates())
-
-    logger.info("Web backend started successfully")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("Shutting down SIP AI Agent Web Backend")
 
 
 def start_web_backend(host: str = "0.0.0.0", port: int = 8080):  # nosec B104
