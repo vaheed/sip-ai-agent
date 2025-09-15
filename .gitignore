@@ -208,6 +208,10 @@ web/.cache/
 web/.turbo/
 web/.parcel-cache/
 
+# Playwright test artifacts
+playwright-report/
+test-results/
+
 # Storybook build
 web/storybook-static/
 
