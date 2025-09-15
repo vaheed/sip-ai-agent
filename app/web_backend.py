@@ -76,6 +76,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files
+web_dir = os.path.join(os.path.dirname(__file__), "..", "web")
+if os.path.exists(web_dir):
+    app.mount("/js", StaticFiles(directory=os.path.join(web_dir, "js")), name="js")
+    app.mount("/favicon.ico", StaticFiles(directory=web_dir), name="favicon")
+    app.mount("/favicon.svg", StaticFiles(directory=web_dir), name="favicon-svg")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():

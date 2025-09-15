@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 4, // Use more workers locally for faster execution
   globalSetup: require.resolve('./tests/e2e/global-setup'),
   // Run only quick tests by default for faster feedback
-  testMatch: process.env.FULL_TESTS ? '**/*.spec.ts' : '**/quick-*.spec.ts',
+  testMatch: process.env.FULL_TESTS ? '**/*.spec.ts' : '**/quick-dashboard.spec.ts',
   reporter: [
     ['html'],
     ['json', { outputFile: 'test-results/results.json' }],
@@ -49,23 +49,24 @@ export default defineConfig({
         }
       },
     },
-    {
-      name: 'firefox',
-      use: { 
-        ...devices['Desktop Firefox'],
-        // Optimize Firefox for faster testing
-        launchOptions: {
-          firefoxUserPrefs: {
-            'dom.webnotifications.enabled': false,
-            'dom.push.enabled': false,
-            'media.navigator.permission.disabled': true,
-            'media.navigator.streams.fake': true,
-            'media.peerconnection.enabled': false,
-            'media.navigator.mediadevices.enabled': false
-          }
-        }
-      },
-    },
+    // Firefox disabled due to performance issues (25-42s per test)
+    // {
+    //   name: 'firefox',
+    //   use: { 
+    //     ...devices['Desktop Firefox'],
+    //     // Optimize Firefox for faster testing
+    //     launchOptions: {
+    //       firefoxUserPrefs: {
+    //         'dom.webnotifications.enabled': false,
+    //         'dom.push.enabled': false,
+    //         'media.navigator.permission.disabled': true,
+    //         'media.navigator.streams.fake': true,
+    //         'media.peerconnection.enabled': false,
+    //         'media.navigator.mediadevices.enabled': false
+    //       }
+    //     }
+    //   },
+    // },
     {
       name: 'webkit',
       use: { 
