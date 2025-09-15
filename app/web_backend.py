@@ -12,7 +12,7 @@ import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -102,7 +102,10 @@ async def serve_frontend():
 @app.post("/api/auth/login", response_model=LoginResponse)
 async def login(login_data: LoginRequest):
     """Authenticate user and return session token."""
-    return await authenticate_user(login_data)
+    result = await authenticate_user(login_data)
+    if not result.success:
+        raise HTTPException(status_code=401, detail=result.message)
+    return result
 
 
 @app.post("/api/auth/logout")
@@ -118,7 +121,7 @@ async def logout(request: Request):
 @app.get("/api/auth/status")
 async def auth_status(current_user: dict = Depends(get_current_user)):
     """Check authentication status."""
-    return {"authenticated": True, "user": current_user["username"]}
+    return {"authenticated": True, "username": current_user["username"]}
 
 
 # System status endpoints
@@ -133,6 +136,17 @@ async def get_system_status():
         await monitor.start()
         api_handler = APIHandler(monitor)
     return await api_handler.get_system_status()
+
+
+@app.options("/api/status")
+async def options_system_status():
+    """Handle CORS preflight for system status."""
+    from fastapi.responses import Response
+    response = Response(content="OK")
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 
 @app.get("/api/logs")
@@ -241,6 +255,13 @@ async def get_system_metrics():
 @app.websocket("/ws/events")
 async def websocket_endpoint(websocket):
     """WebSocket endpoint for real-time updates."""
+    global monitor
+    if monitor is None:
+        # Initialize for testing
+        from .monitor import Monitor
+        monitor = Monitor()
+        await monitor.start()
+    
     websocket_handler = get_websocket_handler(monitor)
     await websocket_handler.websocket_endpoint(websocket)
 
