@@ -11,7 +11,7 @@ export default defineConfig({
     ['json', { outputFile: 'test-results/results.json' }],
   ],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:8080',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -39,8 +39,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: 'python -m http.server 8080',
+    url: 'http://localhost:8080',
     reuseExistingServer: true, // Always reuse existing server to avoid conflicts
     timeout: 120 * 1000, // 2 minutes
   },

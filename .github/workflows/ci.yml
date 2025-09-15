@@ -97,7 +97,9 @@ jobs:
       run: npm ci
     
     - name: Run E2E tests
-      run: npm run test:e2e
+      run: |
+        cd web
+        npm run test:e2e
       continue-on-error: true
     
     - name: Validate design tokens
@@ -153,12 +155,14 @@ jobs:
     
     - name: Start static server
       run: |
+        cd web
         python -m http.server 8080 &
         sleep 5
         curl -f http://localhost:8080 || exit 1
     
     - name: Run accessibility tests
       run: |
+        cd web
         npm run a11y || true
         npx playwright test tests/e2e/accessibility.spec.ts --reporter=list --project=chromium
       env:
