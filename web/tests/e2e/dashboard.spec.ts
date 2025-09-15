@@ -2,13 +2,24 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SIP AI Agent Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    // Navigate to the page
     await page.goto('/');
     
-    // Wait for the React app to load
+    // Wait for the React app to load with more specific conditions
     await page.waitForFunction(() => {
       const root = document.getElementById('root');
       return root && root.children.length > 0;
-    }, { timeout: 10000 });
+    }, { timeout: 15000 });
+    
+    // Wait for network to be idle to ensure all resources are loaded
+    await page.waitForLoadState('networkidle');
+    
+    // Additional wait for React to be fully rendered
+    await page.waitForFunction(() => {
+      return document.querySelector('[data-testid="app-loaded"]') || 
+             document.querySelector('form') || 
+             document.querySelector('h1');
+    }, { timeout: 5000 });
   });
 
   test('should display login form initially', async ({ page }) => {

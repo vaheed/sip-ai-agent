@@ -5,7 +5,10 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
+    "test:e2e:quick": "playwright test --grep-invert='@slow'",
+    "test:e2e:full": "FULL_TESTS=1 playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "lighthouse": "lhci autorun",
     "a11y": "pa11y-ci",
     "audit:production": "node scripts/audit-production.js"
