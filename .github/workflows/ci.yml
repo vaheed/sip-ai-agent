@@ -94,19 +94,14 @@ jobs:
         cache-dependency-path: ./web/package.json
     
     - name: Install dependencies
-      run: |
-        cd web
-        npm ci
+      run: npm ci
     
     - name: Run E2E tests
-      run: |
-        cd web
-        npm run test:e2e
+      run: npm run test:e2e
       continue-on-error: true
     
     - name: Validate design tokens
       run: |
-        cd web
         echo "Validating design tokens..."
         if [ -f "design-tokens.json" ]; then
           echo "✅ Design tokens file found"
@@ -115,14 +110,11 @@ jobs:
         fi
     
     - name: Run production security audit
-      run: |
-        cd web
-        npm run audit:production
+      run: npm run audit:production
       continue-on-error: true
     
     - name: Run accessibility tests
       run: |
-        cd web
         # Start a simple HTTP server for accessibility testing
         python -m http.server 8080 &
         sleep 3
