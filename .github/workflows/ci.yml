@@ -94,7 +94,9 @@ jobs:
         cache-dependency-path: ./web/package.json
     
     - name: Install dependencies
-      run: npm ci
+      run: |
+        cd web
+        npm ci
     
     - name: Run E2E tests
       run: |
@@ -104,6 +106,7 @@ jobs:
     
     - name: Validate design tokens
       run: |
+        cd web
         echo "Validating design tokens..."
         if [ -f "design-tokens.json" ]; then
           echo "✅ Design tokens file found"
@@ -112,11 +115,14 @@ jobs:
         fi
     
     - name: Run production security audit
-      run: npm run audit:production
+      run: |
+        cd web
+        npm run audit:production
       continue-on-error: true
     
     - name: Run accessibility tests
       run: |
+        cd web
         # Start a simple HTTP server for accessibility testing
         python -m http.server 8080 &
         sleep 3
@@ -159,14 +165,12 @@ jobs:
     
     - name: Start static server
       run: |
-        cd web
         python -m http.server 8080 &
         sleep 5
         curl -f http://localhost:8080 || exit 1
     
     - name: Run accessibility tests
       run: |
-        cd web
         npm run a11y || true
         npx playwright test tests/e2e/accessibility.spec.ts --reporter=list --project=chromium
       env:
@@ -178,9 +182,9 @@ jobs:
       with:
         name: frontend-e2e-results
         path: |
-          ./web/test-results/
-          ./web/playwright-report/
-          ./web/pa11y-screenshots/
+          ./test-results/
+          ./playwright-report/
+          ./pa11y-screenshots/
         retention-days: 30
 
   # Docker Build and Test
