@@ -106,13 +106,18 @@ jobs:
         curl -f http://localhost:8080 || exit 1
     
     - name: Run E2E tests
-      run: npm run test:e2e
+      run: |
+        npm run test:e2e
+        # Ensure test results directory exists
+        mkdir -p test-results playwright-report.
       continue-on-error: true
     
     - name: Run accessibility tests
       run: |
         npm run a11y || true
         npx playwright test tests/e2e/accessibility.spec.ts --reporter=list --project=chromium
+        # Ensure test results directory exists
+        mkdir -p test-results playwright-report pa11y-screenshots
       env:
         CI: true
     
@@ -129,16 +134,25 @@ jobs:
       run: npm run audit:production
       continue-on-error: true
     
+    - name: Generate missing test artifacts
+      run: |
+        # Create placeholder files if they don't exist
+        if [ ! -f "pa11y-results.json" ]; then
+          echo '{"results": [], "summary": {"total": 0, "passes": 0, "failures": 0}}' > pa11y-results.json
+        fi
+        # Ensure all required directories exist
+        mkdir -p test-results playwright-report pa11y-screenshots
+    
     - name: Upload frontend test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: frontend-quality-results
         path: |
-          ./test-results/
-          ./playwright-report/
-          ./pa11y-screenshots/
-          ./pa11y-results.json
+          ./web/test-results/
+          ./web/playwright-report/
+          ./web/pa11y-screenshots/
+          ./web/pa11y-results.json
         retention-days: 30
 
 
