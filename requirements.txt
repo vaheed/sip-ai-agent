@@ -1,0 +1,14 @@
+# SIP client dependencies
+pjsua2==2.12
+pyaudio==0.2.13
+pydub==0.25.1
+websockets==11.0.3
+
+# OpenAI API
+openai>=1.0.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Monitoring
+flask==2.0.1
