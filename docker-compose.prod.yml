@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   sip-agent:
-    image: ghcr.io/${GITHUB_REPOSITORY:-sip-ai-agent}:${VERSION:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-vaheed/sip-ai-agent}:${VERSION:-latest}
     container_name: sip-ai-agent-prod
     restart: unless-stopped
     volumes:
@@ -33,7 +33,7 @@ services:
       - sip-network
 
   web:
-    image: ghcr.io/${GITHUB_REPOSITORY:-sip-ai-agent}-web:${VERSION:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-vaheed/sip-ai-agent}-web:${VERSION:-latest}
     container_name: sip-ai-web-prod
     restart: unless-stopped
     volumes:
@@ -77,39 +77,6 @@ services:
       - web
     networks:
       - sip-network
-
-  # Optional: Add a database for persistent call history
-  postgres:
-    image: postgres:15-alpine
-    container_name: sip-ai-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=sip_ai_agent
-      - POSTGRES_USER=sip_agent
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5432:5432"
-    networks:
-      - sip-network
-
-  # Optional: Add Redis for caching and session storage
-  redis:
-    image: redis:7-alpine
-    container_name: sip-ai-redis
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    networks:
-      - sip-network
-
-volumes:
-  postgres_data:
-  redis_data:
 
 networks:
   sip-network:

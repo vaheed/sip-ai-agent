@@ -1,299 +1,264 @@
-# SIP AI Agent - Deployment Guide
+# 🚀 SIP AI Agent - Production Deployment Guide
 
-This guide covers deploying the SIP AI Agent with Docker versioning and GitHub Container Registry.
-
-## 🚀 Quick Start
-
-### Prerequisites
+## 📋 Prerequisites
 
 - Docker and Docker Compose installed
 - GitHub Container Registry access
-- `.env` file configured
+- SIP server credentials
+- OpenAI API key
 
-### Basic Deployment
+## 🔧 Quick Start
 
-```bash
-# Deploy latest version
-./scripts/deploy.sh
-
-# Deploy specific version
-VERSION=v1.2.3 ./scripts/deploy.sh
-
-# Check deployment status
-./scripts/deploy.sh status
-```
-
-## 📦 Docker Images
-
-The application consists of two Docker images:
-
-- **SIP Agent**: `ghcr.io/your-org/sip-ai-agent:version`
-- **Web UI**: `ghcr.io/your-org/sip-ai-agent-web:version`
-
-### Image Tags
-
-- `latest` - Latest stable version
-- `v1.2.3` - Specific semantic version
-- `main-abc1234` - Branch-based version
-- `develop-xyz5678` - Development version
-
-## 🔄 Version Management
-
-### Using the Version Script
+### 1. Clone and Setup
 
 ```bash
-# Show current version
-make version
-
-# Bump version
-make version-bump-patch  # 1.0.0 -> 1.0.1
-make version-bump-minor  # 1.0.0 -> 1.1.0
-make version-bump-major  # 1.0.0 -> 2.0.0
-
-# Create and push git tag
-make version-tag
-
-# Show Docker image info
-make version-info
-
-# Create a complete release
-make release
+git clone https://github.com/vaheed/sip-ai-agent.git
+cd sip-ai-agent
 ```
 
-### Manual Version Management
+### 2. Configure Environment
 
 ```bash
-# Bump version and create tag
-python scripts/version.py bump --type patch
-python scripts/version.py tag --push
-
-# Show version info
-python scripts/version.py info
+cp env.example .env
 ```
 
-## 🏗️ GitHub Actions
-
-### Automatic Builds
-
-The GitHub Actions workflow automatically builds and pushes Docker images when:
-
-- **Push to main**: Creates `latest` tag
-- **Push to develop**: Creates `develop-<sha>` tag
-- **Create tag**: Creates version-specific tags
-- **Pull Request**: Builds but doesn't push
-
-### Workflow Features
-
-- ✅ Multi-platform builds
-- ✅ Vulnerability scanning with Trivy
-- ✅ Cache optimization
-- ✅ Automatic tagging
-- ✅ Security scanning
-
-## 🚢 Production Deployment
-
-### Using Docker Compose
+Edit `.env` with your settings:
 
 ```bash
-# Deploy with production overrides
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Required Settings
+SIP_DOMAIN=your-sip-domain.com
+SIP_USER=your-sip-username
+SIP_PASS=your-sip-password
+OPENAI_API_KEY=your-openai-api-key
+AGENT_ID=your-agent-id
 
-# Deploy specific version
-VERSION=v1.2.3 docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Web UI Login (Default)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+
+# Optional Settings
+OPENAI_MODE=realtime
+OPENAI_MODEL=gpt-realtime
+OPENAI_VOICE=alloy
 ```
 
-### Using the Deployment Script
+### 3. Deploy with Docker Compose
 
+#### Option A: Simple Deployment (Recommended)
 ```bash
-# Deploy to production
-ENVIRONMENT=production VERSION=v1.2.3 ./scripts/deploy.sh
-
-# Check status
-./scripts/deploy.sh status
-
-# View logs
-./scripts/deploy.sh logs
-
-# Rollback if needed
-PREVIOUS_VERSION=v1.2.2 ./scripts/deploy.sh rollback
+# Start only the essential services
+docker-compose -f docker-compose.prod.yml up sip-agent web -d
 ```
+
+#### Option B: Full Deployment with Nginx
+```bash
+# Start all services including reverse proxy
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+## 🌐 Access Points
+
+After deployment, access your services:
+
+- **Web Dashboard**: http://localhost:8080 (sip-agent) or http://localhost:8081 (web)
+- **Metrics**: http://localhost:9090/metrics
+- **Health Check**: http://localhost:8080/healthz
+- **Nginx (if enabled)**: http://localhost:80
+
+## 🔐 Default Login Credentials
+
+**Web UI Dashboard:**
+- **Username**: `admin`
+- **Password**: `admin123`
+
+⚠️ **IMPORTANT**: Change these credentials in production!
+
+## 📊 Service Architecture
+
+### Core Services
+
+1. **sip-agent** (Port 8080)
+   - Main SIP AI Agent
+   - Handles SIP calls and OpenAI integration
+   - Provides Web UI dashboard
+   - Exposes metrics on port 9090
+
+2. **web** (Port 8081)
+   - Standalone Web UI service
+   - Alternative dashboard interface
+   - Depends on sip-agent service
+
+### Optional Services
+
+3. **nginx** (Port 80/443)
+   - Reverse proxy for production
+   - SSL termination
+   - Load balancing
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `SIP_DOMAIN` | SIP server domain | - | ✅ |
+| `SIP_USER` | SIP username | - | ✅ |
+| `SIP_PASS` | SIP password | - | ✅ |
+| `OPENAI_API_KEY` | OpenAI API key | - | ✅ |
+| `AGENT_ID` | Unique agent identifier | - | ✅ |
+| `ADMIN_USERNAME` | Web UI username | `admin` | ❌ |
+| `ADMIN_PASSWORD` | Web UI password | `admin123` | ❌ |
+| `OPENAI_MODE` | OpenAI API mode | `legacy` | ❌ |
+| `OPENAI_MODEL` | OpenAI model | `gpt-4` | ❌ |
+| `OPENAI_VOICE` | OpenAI voice | `alloy` | ❌ |
+
+### Port Configuration
+
+| Service | Internal Port | External Port | Protocol |
+|---------|---------------|---------------|----------|
+| Web UI | 8080 | 8080/8081 | HTTP |
+| Metrics | 9090 | 9090 | HTTP |
+| SIP Signaling | 5060 | 5060 | UDP |
+| RTP Media | 16000-16100 | 16000-16100 | UDP |
+
+## 🛠️ Management Commands
+
+### Start Services
 ```bash
-# Required
-SIP_DOMAIN=your-sip-domain.com
-SIP_USER=your-sip-user
-SIP_PASS=your-sip-password
-OPENAI_API_KEY=your-openai-key
-AGENT_ID=your-agent-id
-
-# Optional
-VERSION=latest
-ENVIRONMENT=production
-GITHUB_REPOSITORY=your-org/sip-ai-agent
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### Docker Compose Overrides
-
-Create `docker-compose.override.yml` for local customizations:
-
-```yaml
-version: '3.8'
-services:
-  sip-agent:
-    ports:
-      - "8080:8080"
-    environment:
-      - DEBUG=true
+### Stop Services
+```bash
+docker-compose -f docker-compose.prod.yml down
 ```
 
-## 📊 Monitoring
-
-### Health Checks
-
-- **SIP Agent**: `http://localhost:8080/healthz`
-- **Web UI**: `http://localhost:8081/healthz`
-- **Metrics**: `http://localhost:9090/metrics`
-
-### Logs
-
+### View Logs
 ```bash
 # All services
-docker-compose logs -f
+docker-compose -f docker-compose.prod.yml logs -f
 
 # Specific service
-docker-compose logs -f sip-agent
-docker-compose logs -f web
-
-# Last 100 lines
-docker-compose logs --tail=100 sip-agent
+docker-compose -f docker-compose.prod.yml logs -f sip-agent
 ```
 
-## 🔒 Security
+### Update Services
+```bash
+# Pull latest images
+docker-compose -f docker-compose.prod.yml pull
 
-### Vulnerability Scanning
+# Restart with new images
+docker-compose -f docker-compose.prod.yml up -d
+```
 
-The GitHub Actions workflow includes Trivy vulnerability scanning:
+### Health Check
+```bash
+# Check service health
+docker-compose -f docker-compose.prod.yml ps
 
-- Scans all Docker images
-- Reports to GitHub Security tab
-- Fails build on high-severity issues
+# Test health endpoint
+curl http://localhost:8080/healthz
+```
 
-### Security Best Practices
+## 🔒 Security Considerations
 
-- Use specific version tags in production
-- Regularly update base images
-- Scan images before deployment
-- Use non-root users in containers
-- Limit container privileges
+1. **Change default credentials**:
+   ```bash
+   ADMIN_USERNAME=your-username
+   ADMIN_PASSWORD=your-secure-password
+   ```
+
+2. **Use HTTPS in production**:
+   - Configure SSL certificates in `./ssl/`
+   - Update nginx configuration
+
+3. **Firewall configuration**:
+   - Only expose necessary ports
+   - Use VPN for SIP access if possible
+
+4. **Environment file security**:
+   - Never commit `.env` to version control
+   - Use Docker secrets for sensitive data
+
+## 📈 Monitoring
+
+### Metrics Endpoint
+- **URL**: http://localhost:9090/metrics
+- **Format**: Prometheus metrics
+- **Integration**: Grafana, Prometheus
+
+### Health Monitoring
+- **URL**: http://localhost:8080/healthz
+- **Response**: JSON health status
+- **Checks**: SIP registration, OpenAI connectivity, system resources
+
+### Logs
+- **Location**: `./logs/` directory
+- **Format**: Structured JSON logs
+- **Rotation**: Automatic log rotation configured
 
 ## 🚨 Troubleshooting
 
 ### Common Issues
 
-#### Image Pull Failures
+1. **SIP Registration Failed**
+   - Check SIP credentials
+   - Verify network connectivity
+   - Check firewall settings
+
+2. **OpenAI API Errors**
+   - Verify API key validity
+   - Check API quota and billing
+   - Review rate limits
+
+3. **Web UI Not Accessible**
+   - Check port configuration
+   - Verify container health
+   - Review logs for errors
+
+4. **Audio Issues**
+   - Check RTP port range
+   - Verify NAT traversal settings
+   - Review audio codec configuration
+
+### Debug Commands
 
 ```bash
-# Check registry access
-docker pull ghcr.io/your-org/sip-ai-agent:latest
+# Check container status
+docker-compose -f docker-compose.prod.yml ps
 
-# Login to registry
-echo $GITHUB_TOKEN | docker login ghcr.io -u your-username --password-stdin
+# View detailed logs
+docker-compose -f docker-compose.prod.yml logs --tail=100 sip-agent
+
+# Execute commands in container
+docker-compose -f docker-compose.prod.yml exec sip-agent bash
+
+# Check resource usage
+docker stats
 ```
 
-#### Service Health Check Failures
+## 📞 Support
+
+For issues and support:
+- **GitHub Issues**: [Create an issue](https://github.com/vaheed/sip-ai-agent/issues)
+- **Documentation**: Check the README.md
+- **Logs**: Always include relevant logs when reporting issues
+
+## 🔄 Updates
+
+To update to the latest version:
 
 ```bash
-# Check service logs
-docker-compose logs sip-agent
+# Pull latest changes
+git pull origin main
 
-# Check health endpoint manually
-curl -f http://localhost:8080/healthz
+# Pull latest Docker images
+docker-compose -f docker-compose.prod.yml pull
 
-# Restart service
-docker-compose restart sip-agent
+# Restart services
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-#### Port Conflicts
+---
 
-```bash
-# Check port usage
-netstat -tulpn | grep :8080
-
-# Use different ports
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-### Debug Mode
-
-```bash
-# Enable debug logging
-DEBUG=true docker-compose up
-
-# Access container shell
-docker-compose exec sip-agent bash
-docker-compose exec web bash
-```
-
-## 📈 Scaling
-
-### Horizontal Scaling
-
-```yaml
-# docker-compose.prod.yml
-services:
-  sip-agent:
-    deploy:
-      replicas: 3
-    ports:
-      - "8080-8082:8080"
-```
-
-### Load Balancing
-
-Use nginx or traefik for load balancing multiple instances.
-
-## 🔄 Updates and Rollbacks
-
-### Rolling Updates
-
-```bash
-# Update to new version
-VERSION=v1.3.0 ./scripts/deploy.sh
-
-# Rollback if issues
-PREVIOUS_VERSION=v1.2.3 ./scripts/deploy.sh rollback
-```
-
-### Blue-Green Deployment
-
-```bash
-# Deploy to staging
-ENVIRONMENT=staging VERSION=v1.3.0 ./scripts/deploy.sh
-
-# Test staging
-curl http://staging.example.com/healthz
-
-# Switch to production
-ENVIRONMENT=production VERSION=v1.3.0 ./scripts/deploy.sh
-```
-
-## 📚 Additional Resources
-
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-- [Trivy Security Scanner](https://trivy.dev/)
-- [FastAPI Deployment](https://fastapi.tiangolo.com/deployment/)
-
-## 🆘 Support
-
-For deployment issues:
-
-1. Check the logs: `./scripts/deploy.sh logs`
-2. Verify configuration: `make env-check`
-3. Test health endpoints: `make health`
-4. Review GitHub Actions logs
-5. Open an issue with deployment details
+**Note**: This deployment guide assumes you have basic Docker knowledge. For advanced configurations, refer to the Docker Compose documentation.
