@@ -15,9 +15,9 @@ from typing import Any, Optional
 import websockets
 from openai import OpenAI
 
-from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice, get_settings
-from logging_config import get_logger, log_openai_event, with_correlation_id
-from metrics import get_metrics
+from .config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice, get_settings
+from .logging_config import get_logger, log_openai_event, with_correlation_id
+from .metrics import get_metrics
 
 logger = get_logger("openai_agent")
 metrics = get_metrics()

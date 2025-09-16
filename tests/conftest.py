@@ -205,8 +205,8 @@ def mock_call():
 @pytest.fixture
 def mock_agent():
     """Create a mock OpenAI agent for testing."""
-    with patch("openai_agent.get_settings") as mock_get_settings:
-        from config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice
+    with patch("app.openai_agent.get_settings") as mock_get_settings:
+        from app.config import OpenAIAPIMode, OpenAIRealtimeModel, OpenAIVoice
 
         mock_settings = Mock()
         mock_settings.openai_mode = OpenAIAPIMode.REALTIME
@@ -214,7 +214,7 @@ def mock_agent():
         mock_settings.openai_voice = OpenAIVoice.ALLOY
         mock_get_settings.return_value = mock_settings
 
-        from openai_agent import OpenAIAgent
+        from app.openai_agent import OpenAIAgent
 
         agent = OpenAIAgent("test-correlation-id")
         agent.ws = None  # Will be set in individual tests

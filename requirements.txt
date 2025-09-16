@@ -30,12 +30,11 @@ pytest-mock>=3.10.0
 pytest-cov>=4.0.0
 httpx>=0.24.0
 
-# Development tools
-black>=23.0.0
-isort>=5.12.0
-mypy>=1.0.0
-flake8>=6.0.0
-pre-commit>=3.0.0
+# Development tools (for CI only - not needed for production)
+# black>=23.0.0
+# isort>=5.12.0
+# mypy>=1.0.0
+# flake8>=6.0.0
 
 # Security and quality tools
 bandit>=1.7.5

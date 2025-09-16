@@ -16,20 +16,20 @@ import signal
 import sys
 from typing import Optional
 
-from call_history import get_call_history_manager
-from config import get_settings, reload_settings
-from health import get_health_monitor
-from logging_config import (
+from .call_history import get_call_history_manager
+from .config import get_settings, reload_settings
+from .health import get_health_monitor
+from .logging_config import (
     generate_correlation_id,
     get_logger,
     setup_logging,
     with_correlation_id,
 )
-from metrics import get_metrics
-from monitor import monitor
+from .metrics import get_metrics
+from .monitor import monitor
 
 # OpenAIAgent is imported by SIPClient when needed
-from sip_client import SIPClient, SIPRegistrationError
+from .sip_client import SIPClient, SIPRegistrationError
 
 
 class SIPAIAgent:

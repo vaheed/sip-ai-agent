@@ -197,3 +197,44 @@ coverage/
 # Test artifacts
 test-results/
 .pytest_cache/
+
+# Frontend test artifacts
+web/test-results/
+web/playwright-report/
+web/coverage/
+web/dist/
+web/node_modules/
+web/.cache/
+web/.turbo/
+web/.parcel-cache/
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+
+# Storybook build
+web/storybook-static/
+
+# Lighthouse results
+web/lighthouse-results/
+
+# Accessibility test results
+web/pa11y-screenshots/
+
+# Design tokens build
+web/design-tokens.css
+
+# Vite build cache
+web/.vite/
+
+# TypeScript build info
+web/*.tsbuildinfo
+
+# React build artifacts (not used - static HTML only)
+web/build/
+web/.next/
+web/out/
+
+# Package manager files (keep package-lock.json for CI)
+web/yarn.lock
+web/pnpm-lock.yaml

@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional
 
 import psutil
 
-from config import get_settings
-from logging_config import get_logger
-from metrics import get_metrics
+from .config import get_settings
+from .logging_config import get_logger
+from .metrics import get_metrics
 
 logger = get_logger("health")
 

@@ -1,0 +1,12 @@
+{
+  "defaults": {
+    "timeout": 20000,
+    "wait": 2000,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+    }
+  },
+  "urls": [
+    "http://localhost:8080"
+  ]
+}

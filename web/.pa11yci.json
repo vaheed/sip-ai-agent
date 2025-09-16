@@ -1,0 +1,15 @@
+{
+  "defaults": {
+    "timeout": 10000,
+    "wait": 1000,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-setuid-sandbox"]
+    }
+  },
+  "urls": [
+    {
+      "url": "http://localhost:8080",
+      "screenCapture": "./pa11y-screenshots/"
+    }
+  ]
+}

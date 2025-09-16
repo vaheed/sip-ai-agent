@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 import structlog
 
-from config import get_settings
+from .config import get_settings
 
 
 class CorrelationIDProcessor:
