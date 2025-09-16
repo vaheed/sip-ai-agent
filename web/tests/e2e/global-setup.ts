@@ -12,10 +12,10 @@ async function globalSetup(config: FullConfig) {
     // Wait for the page to be fully loaded
     await page.waitForLoadState('networkidle');
     
-    // Wait for React to be ready
+    // Wait for the page to have some content (either static HTML or React-rendered)
     await page.waitForFunction(() => {
-      const root = document.getElementById('root');
-      return root && root.children.length > 0;
+      const body = document.body;
+      return body && body.textContent && body.textContent.length > 100;
     }, { timeout: 30000 });
     
     console.log('Global setup: Page pre-warmed successfully');

@@ -5,8 +5,8 @@ Modern React-based web interface for the SIP AI Agent with comprehensive UI/UX q
 ## 🚀 Quick Start
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies and setup Playwright
+npm run setup
 
 # Start development server
 npm run dev
@@ -16,6 +16,25 @@ npm run build
 
 # Run all quality checks
 npm run quality
+```
+
+### Playwright E2E Testing Setup
+
+```bash
+# Setup Playwright environment (installs dependencies and browsers)
+npm run setup
+
+# Run quick E2E tests
+npm run test:e2e:quick
+
+# Run full E2E test suite
+npm run test:e2e:full
+
+# Run E2E tests with UI
+npm run test:e2e:ui
+
+# Debug E2E tests
+npm run test:e2e:debug
 ```
 
 ## 🎨 Design System

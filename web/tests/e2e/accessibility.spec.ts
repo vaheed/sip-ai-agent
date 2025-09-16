@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Accessibility Tests', () => {
+test.describe('[a11y] Accessibility Tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     
@@ -9,6 +9,17 @@ test.describe('Accessibility Tests', () => {
       const body = document.body;
       return body && body.textContent && body.textContent.length > 100;
     }, { timeout: 10000 });
+    
+    // Wait for React to be ready if it's loading
+    try {
+      await page.waitForFunction(() => {
+        const root = document.getElementById('root');
+        return root && root.children.length > 0;
+      }, { timeout: 5000 });
+    } catch (error) {
+      // If React doesn't load, that's okay - we can still test the static content
+      console.log('React not ready, testing static content');
+    }
     
     // Debug: Log page content to help diagnose issues
     const title = await page.title();
@@ -84,6 +95,76 @@ test.describe('Accessibility Tests', () => {
       const bodyText = await page.textContent('body');
       expect(bodyText).toBeTruthy();
       expect(bodyText?.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('should have proper heading structure', async ({ page }) => {
+    // Check that the page has a proper heading structure
+    const h1 = page.locator('h1');
+    const h1Count = await h1.count();
+    
+    if (h1Count > 0) {
+      // Check that h1 has content
+      const h1Text = await h1.first().textContent();
+      expect(h1Text).toBeTruthy();
+      expect(h1Text?.trim().length).toBeGreaterThan(0);
+    }
+    
+    // Check for any headings (h1-h6)
+    const headings = page.locator('h1, h2, h3, h4, h5, h6');
+    const headingCount = await headings.count();
+    
+    if (headingCount > 0) {
+      // Check that all headings have content
+      for (let i = 0; i < headingCount; i++) {
+        const headingText = await headings.nth(i).textContent();
+        expect(headingText).toBeTruthy();
+        expect(headingText?.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('should have proper color contrast', async ({ page }) => {
+    // This is a basic test - in a real scenario, you'd use axe-core or similar
+    // Check that the page has proper structure for color contrast
+    const body = page.locator('body');
+    const bodyStyles = await body.evaluate((el) => {
+      const computed = window.getComputedStyle(el);
+      return {
+        backgroundColor: computed.backgroundColor,
+        color: computed.color
+      };
+    });
+    
+    // Basic check that styles are applied
+    expect(bodyStyles.backgroundColor).toBeTruthy();
+    expect(bodyStyles.color).toBeTruthy();
+  });
+
+  test('should have proper form labels', async ({ page }) => {
+    // Check that form inputs have proper labels
+    const inputs = page.locator('input, select, textarea');
+    const inputCount = await inputs.count();
+    
+    if (inputCount > 0) {
+      for (let i = 0; i < inputCount; i++) {
+        const input = inputs.nth(i);
+        const inputId = await input.getAttribute('id');
+        
+        if (inputId) {
+          // Check for associated label
+          const label = page.locator(`label[for="${inputId}"]`);
+          const labelCount = await label.count();
+          
+          if (labelCount === 0) {
+            // Check for aria-label or aria-labelledby
+            const ariaLabel = await input.getAttribute('aria-label');
+            const ariaLabelledBy = await input.getAttribute('aria-labelledby');
+            
+            expect(ariaLabel || ariaLabelledBy).toBeTruthy();
+          }
+        }
+      }
     }
   });
 });

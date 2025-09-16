@@ -7,8 +7,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : 4, // Use more workers locally for faster execution
   globalSetup: require.resolve('./tests/e2e/global-setup'),
-  // Run only quick tests by default for faster feedback
-  testMatch: process.env.FULL_TESTS ? '**/*.spec.ts' : '**/quick-*.spec.ts',
+  // Run only quick tests by default for faster feedback, but always include accessibility tests
+  testMatch: process.env.FULL_TESTS ? '**/*.spec.ts' : ['**/quick-*.spec.ts', '**/accessibility.spec.ts'],
   reporter: [
     ['html'],
     ['json', { outputFile: 'test-results/results.json' }],
@@ -80,7 +80,7 @@ export default defineConfig({
     {
       name: 'accessibility',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: '**/*.accessibility.spec.ts',
+      testMatch: '**/accessibility.spec.ts',
     },
   ],
   webServer: {
