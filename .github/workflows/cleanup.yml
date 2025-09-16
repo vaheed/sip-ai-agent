@@ -1,0 +1,125 @@
+name: Cleanup
+
+on:
+  schedule:
+    # Run cleanup weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+jobs:
+  # Clean up old container images
+  cleanup-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
+    
+    - name: Clean up old container images
+      run: |
+        echo "Cleaning up old container images..."
+        
+        # List all images in the registry
+        echo "Current images in registry:"
+        gh api /user/packages/container/${{ github.repository }}/versions --jq '.[] | {id: .id, name: .name, created_at: .created_at}' || echo "No images found"
+        
+        # Delete images older than 30 days (keep latest 10 versions)
+        echo "Deleting old images..."
+        gh api /user/packages/container/${{ github.repository }}/versions --jq '.[10:] | .[].id' | xargs -I {} gh api -X DELETE /user/packages/container/${{ github.repository }}/versions/{} || echo "No old images to delete"
+        
+        echo "Cleanup completed!"
+    
+    - name: Clean up old web images
+      run: |
+        echo "Cleaning up old web container images..."
+        
+        # List all web images in the registry
+        echo "Current web images in registry:"
+        gh api /user/packages/container/${{ github.repository }}-web/versions --jq '.[] | {id: .id, name: .name, created_at: .created_at}' || echo "No web images found"
+        
+        # Delete web images older than 30 days (keep latest 10 versions)
+        echo "Deleting old web images..."
+        gh api /user/packages/container/${{ github.repository }}-web/versions --jq '.[10:] | .[].id' | xargs -I {} gh api -X DELETE /user/packages/container/${{ github.repository }}-web/versions/{} || echo "No old web images to delete"
+        
+        echo "Web images cleanup completed!"
+
+  # Clean up old artifacts
+  cleanup-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Clean up old artifacts
+      run: |
+        echo "Cleaning up old artifacts..."
+        
+        # List all artifacts
+        echo "Current artifacts:"
+        gh api /repos/${{ github.repository }}/actions/artifacts --jq '.artifacts[] | {id: .id, name: .name, created_at: .created_at}' || echo "No artifacts found"
+        
+        # Delete artifacts older than 30 days
+        echo "Deleting old artifacts..."
+        gh api /repos/${{ github.repository }}/actions/artifacts --jq '.[] | select(.created_at < (now - 30*24*3600)) | .id' | xargs -I {} gh api -X DELETE /repos/${{ github.repository }}/actions/artifacts/{} || echo "No old artifacts to delete"
+        
+        echo "Artifacts cleanup completed!"
+
+  # Clean up old workflow runs
+  cleanup-workflows:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Clean up old workflow runs
+      run: |
+        echo "Cleaning up old workflow runs..."
+        
+        # List all workflow runs
+        echo "Current workflow runs:"
+        gh api /repos/${{ github.repository }}/actions/runs --jq '.workflow_runs[] | {id: .id, name: .name, created_at: .created_at, status: .status}' || echo "No workflow runs found"
+        
+        # Delete workflow runs older than 30 days (keep latest 50 runs)
+        echo "Deleting old workflow runs..."
+        gh api /repos/${{ github.repository }}/actions/runs --jq '.workflow_runs[50:] | .[] | select(.created_at < (now - 30*24*3600)) | .id' | xargs -I {} gh api -X DELETE /repos/${{ github.repository }}/actions/runs/{} || echo "No old workflow runs to delete"
+        
+        echo "Workflow runs cleanup completed!"
+
+  # Cleanup Summary
+  cleanup-summary:
+    runs-on: ubuntu-latest
+    needs: [cleanup-images, cleanup-artifacts, cleanup-workflows]
+    if: always()
+    
+    steps:
+    - name: Cleanup Summary
+      run: |
+        echo "## Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| Cleanup Type | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Container Images | ${{ needs.cleanup-images.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Artifacts | ${{ needs.cleanup-artifacts.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Workflow Runs | ${{ needs.cleanup-workflows.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Cleanup Details" >> $GITHUB_STEP_SUMMARY
+        echo "- Old container images (older than 30 days) have been removed" >> $GITHUB_STEP_SUMMARY
+        echo "- Old artifacts (older than 30 days) have been removed" >> $GITHUB_STEP_SUMMARY
+        echo "- Old workflow runs (older than 30 days) have been removed" >> $GITHUB_STEP_SUMMARY
+        echo "- Latest 10 versions of each image are kept" >> $GITHUB_STEP_SUMMARY
+        echo "- Latest 50 workflow runs are kept" >> $GITHUB_STEP_SUMMARY

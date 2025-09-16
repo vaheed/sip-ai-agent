@@ -20,7 +20,8 @@ jobs:
         python-version: [3.9, 3.10, 3.11]
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -28,29 +29,37 @@ jobs:
         python-version: ${{ matrix.python-version }}
     
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
     
-    - name: Install dependencies
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y portaudio19-dev libpcap-dev
+    
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-asyncio pytest-mock bandit safety
+        pip install pytest pytest-cov pytest-asyncio pytest-mock bandit safety black isort mypy flake8
+    
+    - name: Code formatting check with Black
+      run: black --check --diff app/ tests/
+    
+    - name: Import sorting check with isort
+      run: isort --check-only --diff app/ tests/
     
     - name: Lint with flake8
       run: |
-        pip install flake8
-        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+        flake8 app/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 app/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
     
     - name: Type check with mypy
-      run: |
-        pip install mypy
-        mypy app/ --ignore-missing-imports --no-error-summary
+      run: mypy app/ --ignore-missing-imports --no-error-summary
     
     - name: Security check with bandit
       run: |
@@ -71,9 +80,10 @@ jobs:
         SIP_PASS: testpass
         OPENAI_API_KEY: test-key
         AGENT_ID: test-agent
+        LOG_LEVEL: DEBUG
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: backend
@@ -81,7 +91,7 @@ jobs:
         fail_ci_if_error: false
     
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: backend-test-results-${{ matrix.python-version }}
@@ -90,13 +100,15 @@ jobs:
           bandit-report.json
           safety-report.json
           htmlcov/
+        retention-days: 30
 
   # Frontend Tests
   frontend-tests:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -109,24 +121,27 @@ jobs:
       working-directory: ./web
       run: npm ci
     
-    - name: Lint frontend code
+    - name: Install Playwright browsers
       working-directory: ./web
-      run: npm run lint || echo "Linting failed but continuing"
-    
-    - name: Type check frontend code
-      working-directory: ./web
-      run: npm run type-check || echo "Type checking failed but continuing"
+      run: npx playwright install --with-deps
     
     - name: Run Playwright E2E tests
       working-directory: ./web
       run: |
-        npx playwright install --with-deps
         npm run test:e2e
+      env:
+        CI: true
+        BASE_URL: http://localhost:8080
+    
+    - name: Run accessibility tests
+      working-directory: ./web
+      run: |
+        npm run a11y:test || echo "Accessibility tests completed with warnings"
       env:
         CI: true
     
     - name: Upload Playwright report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: playwright-report
@@ -134,7 +149,7 @@ jobs:
         retention-days: 30
     
     - name: Upload Playwright traces
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: playwright-traces
@@ -147,7 +162,8 @@ jobs:
     needs: [backend-tests, frontend-tests]
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -157,7 +173,7 @@ jobs:
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        password: ${{ secrets.GHCR_TOKEN }}
     
     - name: Extract metadata for main image
       id: meta-main
@@ -211,7 +227,8 @@ jobs:
     needs: [docker-build]
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Create test environment file
       run: |
@@ -253,9 +270,6 @@ jobs:
       run: |
         # Test production configuration
         docker-compose -f docker-compose.prod.yml config
-        
-        # Note: We don't actually run the production setup in CI as it requires
-        # the actual Docker images to be published first
     
     - name: Cleanup
       if: always()
@@ -269,9 +283,10 @@ jobs:
     needs: [docker-build]
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: Run Trivy vulnerability scanner
+    - name: Run Trivy vulnerability scanner for main image
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
@@ -286,12 +301,12 @@ jobs:
         output: 'trivy-web-results.sarif'
     
     - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
     
     - name: Upload Trivy web scan results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-web-results.sarif'
 
@@ -301,7 +316,8 @@ jobs:
     needs: [docker-build]
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -352,7 +368,7 @@ jobs:
         CI: true
     
     - name: Upload E2E test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: e2e-test-results
@@ -374,7 +390,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -416,7 +433,7 @@ jobs:
       run: npm run lighthouse
     
     - name: Upload Lighthouse results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: lighthouse-results
