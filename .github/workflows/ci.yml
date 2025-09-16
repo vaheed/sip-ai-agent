@@ -248,6 +248,7 @@ jobs:
         labels: ${{ steps.meta-backend.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        platforms: linux/amd64
     
     - name: Extract metadata for Web UI
       id: meta-web
@@ -270,6 +271,24 @@ jobs:
         echo "Web UI Tags: ${{ steps.meta-web.outputs.tags }}"
         echo "Web UI Labels: ${{ steps.meta-web.outputs.labels }}"
     
+    - name: Debug Web UI build context
+      run: |
+        echo "Web directory contents:"
+        ls -la web/
+        echo "Dockerfile.web contents:"
+        cat Dockerfile.web
+        echo "nginx.conf contents:"
+        cat nginx.conf
+        echo "Testing web UI build locally..."
+        docker build -f Dockerfile.web -t test-web-ui .
+        if [ $? -eq 0 ]; then
+          echo "✅ Web UI build test successful"
+          docker rmi test-web-ui
+        else
+          echo "❌ Web UI build test failed"
+          exit 1
+        fi
+
     - name: Build and push Web UI Docker image
       uses: docker/build-push-action@v5
       with:

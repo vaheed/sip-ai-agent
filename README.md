@@ -245,21 +245,15 @@ sip-ai-agent/
    DEBUG=false
    ```
 
-   See `env.example` for a comprehensive list of all available configuration options.
+   See `env.template` for a comprehensive list of all available configuration options.
 
-3. **Deploy with Docker Compose**
+3. **Build and start the containers**
 
-   #### Option A: Development (Local Build)
    ```bash
    docker compose up --build
    ```
 
-   #### Option B: Production (Using GitHub Container Registry)
-   ```bash
-   docker compose -f docker-compose.prod.yml up -d
-   ```
-
-   This starts the SIP agent and web dashboard:
+   This builds PJSIP, installs dependencies, and starts both the SIP agent and web dashboard:
    - **Web Dashboard**: `http://localhost:8080` (Login: admin/admin123)
    - **Health Checks**: `http://localhost:8080/healthz`
    - **Prometheus Metrics**: `http://localhost:9090/metrics`
@@ -282,48 +276,10 @@ sip-ai-agent/
 5. **Access the web dashboard**
 
    Open your browser to `http://localhost:8080` and login with:
-   - **Username**: `admin`
-   - **Password**: `admin123`
-
-   ⚠️ **Important**: Change these default credentials in production!
+   - **Username**: admin
+   - **Password**: admin123
 
    The dashboard provides comprehensive monitoring and management capabilities.
-
-## 🚀 Quick Production Deployment
-
-For production deployment using pre-built Docker images from GitHub Container Registry:
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/vaheed/sip-ai-agent.git
-cd sip-ai-agent
-
-# 2. Configure environment
-cp env.example .env
-# Edit .env with your SIP and OpenAI credentials
-
-# 3. Deploy with production Docker Compose
-docker compose -f docker-compose.prod.yml up -d
-
-# 4. Access the dashboard
-# Open http://localhost:8080
-# Login: admin / admin123
-```
-
-**Default Credentials:**
-- **Username**: `admin`
-- **Password**: `admin123`
-
-**Required Configuration:**
-```env
-SIP_DOMAIN=your-sip-domain.com
-SIP_USER=your-sip-username
-SIP_PASS=your-sip-password
-OPENAI_API_KEY=your-openai-api-key
-AGENT_ID=your-agent-id
-```
-
-For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 🌐 Web Dashboard
 
