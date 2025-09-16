@@ -265,6 +265,11 @@ jobs:
         flavor: |
           latest=false
     
+    - name: Debug Web UI metadata
+      run: |
+        echo "Web UI Tags: ${{ steps.meta-web.outputs.tags }}"
+        echo "Web UI Labels: ${{ steps.meta-web.outputs.labels }}"
+    
     - name: Build and push Web UI Docker image
       uses: docker/build-push-action@v5
       with:
@@ -275,6 +280,7 @@ jobs:
         labels: ${{ steps.meta-web.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        platforms: linux/amd64
     
     - name: Generate deployment summary
       run: |
