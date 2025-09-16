@@ -1,6 +1,9 @@
-FROM nginx:alpine
+FROM nginx:1.25-alpine
 
-# Copy static web files
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Copy static web files directly
 COPY web/ /usr/share/nginx/html/
 
 # Copy nginx configuration
@@ -11,7 +14,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD curl -f http://localhost:8080/healthz || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]

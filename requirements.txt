@@ -1,6 +1,8 @@
-# SIP client dependencies
-# Note: pjsua2 requires compilation and is built separately in Docker
-# pjsua2==2.12  # Uncomment for local development with SIP functionality
+# Production requirements for SIP AI Agent
+# Minimal dependencies for smaller Docker image
+
+# Core dependencies
+# Note: pjsua2 is built from source in Docker, not installed via pip
 pyaudio==0.2.13
 pydub==0.25.1
 websockets>=11.0.3,<16.0.0
@@ -23,19 +25,12 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 
-# Testing
-pytest>=7.0.0
-pytest-asyncio>=0.21.0
-pytest-mock>=3.10.0
-pytest-cov>=4.0.0
-httpx>=0.24.0
+# Database
+aiosqlite>=0.19.0
 
-# Development tools (for CI only - not needed for production)
-# black>=23.0.0
-# isort>=5.12.0
-# mypy>=1.0.0
-# flake8>=6.0.0
+# HTTP client
+requests>=2.31.0
 
-# Security and quality tools
+# Security tools
 bandit>=1.7.5
 safety>=2.3.0

@@ -1,8 +1,7 @@
-FROM python:3.9-slim
+# Multi-stage build for optimized PJSIP + Python
+FROM python:3.11-slim as builder
 
-WORKDIR /app
-
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpcap-dev \
@@ -13,16 +12,17 @@ RUN apt-get update && apt-get install -y \
     swig \
     ffmpeg \
     procps \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PJSIP and pjsua2
+# Install PJSIP with minimal features (no video, no SSL, no ICE)
 RUN cd /tmp && \
     wget https://github.com/pjsip/pjproject/archive/2.12.tar.gz && \
     tar -xzf 2.12.tar.gz && \
     cd pjproject-2.12 && \
-    ./configure --enable-shared && \
+    ./configure --enable-shared --disable-video --disable-sound --disable-ffmpeg --disable-ssl --disable-ice --disable-sound --disable-video && \
     make dep && \
-    make && \
+    make -j$(nproc) && \
     make install && \
     ldconfig && \
     cd pjsip-apps/src/swig && \
@@ -30,29 +30,48 @@ RUN cd /tmp && \
     cd python && \
     python setup.py install
 
-# Copy requirements first for better caching
+# Copy requirements and install Python packages
 COPY requirements.txt .
-
-# Install Python packages (excluding pjsua2 which is built above)
-RUN sed -i '/pjsua2==2.12/d' requirements.txt && \
-    pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
+
+# Production stage
+FROM python:3.11-slim
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpcap0.8 \
+    portaudio19-dev \
+    procps \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy only essential PJSIP libraries and Python packages
+COPY --from=builder /usr/local/lib/libpj* /usr/local/lib/
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/include/pj* /usr/local/include/
+
+# Set working directory
+WORKDIR /app
 
 # Copy application code
 COPY app/ .
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-USER app
+# Create necessary directories
+RUN mkdir -p /app/logs /app/data
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/healthz', timeout=5)"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8080/healthz || exit 1
 
 # Expose ports
-EXPOSE 8080
-EXPOSE 9090
+EXPOSE 8080 9090
 EXPOSE 5060/udp
 EXPOSE 16000-16100/udp
 
