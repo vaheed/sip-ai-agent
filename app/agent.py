@@ -6,14 +6,17 @@ import json
 import asyncio
 import websockets
 import wave
+import threading
+import base64
+from typing import Optional, Sequence
+
 import pyaudio
 from pydub import AudioSegment
 from pydub.playback import play
-import threading
-import base64
 from dotenv import load_dotenv
 from openai import OpenAI
 import pjsua2 as pj
+
 from monitor import monitor
 
 # Load environment variables
@@ -63,6 +66,113 @@ SAMPLE_RATE = 16000
 CHANNELS = 1
 FRAME_DURATION = 20  # ms
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Return a boolean value from environment variables."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(name: str, default: float) -> float:
+    """Return a float value from environment variables with fallback."""
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    """Return an integer value from environment variables with fallback."""
+    try:
+        return int(float(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_codec_prefs(raw: Optional[str]) -> Sequence[str]:
+    """Parse the comma separated codec list from configuration."""
+    if not raw:
+        return ()
+    codecs = []
+    for item in raw.split(','):
+        codec = item.strip()
+        if codec:
+            codecs.append(codec)
+    return tuple(codecs)
+
+
+# SIP media and transport tuning
+SIP_TRANSPORT_PORT = _env_int('SIP_TRANSPORT_PORT', 5060)
+SIP_JB_MIN = _env_int('SIP_JB_MIN', 0)
+SIP_JB_MAX = _env_int('SIP_JB_MAX', 0)
+SIP_JB_MAX_PRE = _env_int('SIP_JB_MAX_PRE', 0)
+SIP_ENABLE_ICE = _env_bool('SIP_ENABLE_ICE', False)
+SIP_ENABLE_TURN = _env_bool('SIP_ENABLE_TURN', False)
+SIP_STUN_SERVER = os.getenv('SIP_STUN_SERVER', '').strip()
+SIP_TURN_SERVER = os.getenv('SIP_TURN_SERVER', '').strip()
+SIP_TURN_USER = os.getenv('SIP_TURN_USER', '').strip()
+SIP_TURN_PASS = os.getenv('SIP_TURN_PASS', '').strip()
+SIP_ENABLE_SRTP = _env_bool('SIP_ENABLE_SRTP', False)
+SIP_SRTP_OPTIONAL = _env_bool('SIP_SRTP_OPTIONAL', True)
+SIP_PREFERRED_CODECS = _parse_codec_prefs(os.getenv('SIP_PREFERRED_CODECS'))
+
+# Retry behaviour
+SIP_REG_RETRY_BASE = _env_float('SIP_REG_RETRY_BASE', 2.0)
+SIP_REG_RETRY_MAX = _env_float('SIP_REG_RETRY_MAX', 60.0)
+SIP_INVITE_RETRY_BASE = _env_float('SIP_INVITE_RETRY_BASE', 1.0)
+SIP_INVITE_RETRY_MAX = _env_float('SIP_INVITE_RETRY_MAX', 30.0)
+SIP_INVITE_MAX_ATTEMPTS = _env_int('SIP_INVITE_MAX_ATTEMPTS', 5)
+
+
+class EndpointTimer(pj.TimerEntry):
+    """Wrapper around ``pj.TimerEntry`` with automatic fallback."""
+
+    def __init__(self, endpoint: pj.Endpoint, callback):
+        super().__init__()
+        self._endpoint = endpoint
+        self._callback = callback
+        self._thread_timer: Optional[threading.Timer] = None
+
+    def schedule(self, delay_seconds: float) -> None:
+        """Schedule the timer to fire after ``delay_seconds``."""
+        self.cancel()
+        if delay_seconds < 0:
+            delay_seconds = 0
+
+        if hasattr(self._endpoint, 'utilTimerSchedule') and hasattr(pj, 'TimeVal'):
+            try:
+                seconds = int(delay_seconds)
+                msec = int((delay_seconds - seconds) * 1000)
+                time_val = pj.TimeVal()
+                time_val.sec = seconds
+                time_val.msec = msec
+                self._endpoint.utilTimerSchedule(self, time_val)
+                return
+            except Exception as err:  # pragma: no cover - depends on runtime support
+                monitor.add_log(f"Falling back to threading timer: {err}")
+
+        # Fallback for environments where utilTimerSchedule is unavailable
+        self._thread_timer = threading.Timer(delay_seconds, self._callback)
+        self._thread_timer.daemon = True
+        self._thread_timer.start()
+
+    def cancel(self) -> None:
+        """Cancel the scheduled timer if active."""
+        try:
+            if hasattr(self._endpoint, 'utilTimerCancel'):
+                self._endpoint.utilTimerCancel(self)
+        except Exception:
+            pass
+
+        if self._thread_timer is not None:
+            self._thread_timer.cancel()
+            self._thread_timer = None
+
+    def onTimeout(self) -> None:  # pragma: no cover - invoked by PJSIP runtime
+        self._callback()
+
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -88,13 +198,16 @@ class AudioCallback(pj.AudioMedia):
 
 # Call class for handling SIP calls
 class Call(pj.Call):
-    def __init__(self, acc, call_id=pj.PJSUA_INVALID_ID):
+    def __init__(self, acc, call_id=pj.PJSUA_INVALID_ID, target_uri: Optional[str] = None):
         pj.Call.__init__(self, acc, call_id)
         self.acc = acc
         self.audio_callback = None
         self.ws = None
         self.openai_thread = None
         self.call_id = call_id
+        self.target_uri = target_uri
+        self._invite_attempts = 0
+        self._invite_retry_timer = EndpointTimer(self.acc.ep, self._retry_invite)
         
     def onCallState(self, prm):
         ci = self.getInfo()
@@ -105,6 +218,8 @@ class Call(pj.Call):
             # Call is established
             print("Call established, starting OpenAI Voice Agent")
             monitor.add_log("Call established, starting OpenAI Voice Agent")
+            self._invite_attempts = 0
+            self._invite_retry_timer.cancel()
 
             # Create audio callback and connect audio media
             self.audio_callback = AudioCallback(self)
@@ -135,10 +250,43 @@ class Call(pj.Call):
             # Call ended
             print("Call disconnected")
             monitor.remove_call(f"Call-{self.call_id}")
+            self._invite_retry_timer.cancel()
             if self.audio_callback:
                 self.audio_callback.stop()
             if self.ws and not self.ws.closed:
                 asyncio.run(self.ws.close())
+            status_code = ci.lastStatusCode
+            if (self.target_uri and ci.role == pj.PJSIP_ROLE_UAC and status_code
+                    and 400 <= status_code < 600):
+                self._schedule_invite_retry(status_code)
+
+    def _schedule_invite_retry(self, status_code: int) -> None:
+        if self._invite_attempts >= SIP_INVITE_MAX_ATTEMPTS:
+            monitor.add_log(
+                f"Invite retry limit reached for {self.target_uri} (status {status_code})"
+            )
+            return
+        delay = min(SIP_INVITE_RETRY_BASE * (2 ** self._invite_attempts), SIP_INVITE_RETRY_MAX)
+        self._invite_attempts += 1
+        monitor.add_log(
+            f"Retrying INVITE to {self.target_uri} in {delay:.1f}s (attempt {self._invite_attempts})"
+        )
+        self._invite_retry_timer.schedule(delay)
+
+    def _retry_invite(self) -> None:
+        if not self.target_uri:
+            return
+        call_prm = pj.CallOpParam()
+        if hasattr(call_prm, 'opt'):
+            call_prm.opt.audioCount = 1
+            call_prm.opt.videoCount = 0
+        try:
+            self.makeCall(self.target_uri, call_prm)
+            monitor.add_log(f"Re-sending INVITE to {self.target_uri}")
+        except Exception as err:
+            monitor.add_log(f"INVITE retry failed: {err}")
+            if self._invite_attempts < SIP_INVITE_MAX_ATTEMPTS:
+                self._schedule_invite_retry(status_code=0)
             
     async def start_openai_agent_legacy(self):
         """
@@ -353,13 +501,20 @@ class Account(pj.Account):
     def __init__(self, ep):
         pj.Account.__init__(self)
         self.ep = ep
-        
+        self._reg_retry_attempts = 0
+        self._reg_retry_timer = EndpointTimer(self.ep, self._retry_registration)
+
     def onRegState(self, prm):
         ai = self.getInfo()
         print(f"Registration state: {ai.regStatusText} ({ai.regStatus})")
         # Update monitor with registration status
         monitor.update_registration(ai.regStatus == 200)
-        
+        if ai.regStatus == 200:
+            self._reg_retry_attempts = 0
+            self._reg_retry_timer.cancel()
+        elif 400 <= ai.regStatus < 600:
+            self._schedule_registration_retry(ai.regStatus)
+
     def onIncomingCall(self, prm):
         print("Incoming call...")
         call = Call(self, prm.callId)
@@ -368,6 +523,31 @@ class Account(pj.Account):
         call.answer(call_prm)
         # Add call to monitor
         monitor.add_call(f"Call-{prm.callId}")
+
+    def make_outgoing_call(self, uri: str) -> Call:
+        call = Call(self, target_uri=uri)
+        call_prm = pj.CallOpParam()
+        if hasattr(call_prm, 'opt'):
+            call_prm.opt.audioCount = 1
+            call_prm.opt.videoCount = 0
+        call.makeCall(uri, call_prm)
+        return call
+
+    def _schedule_registration_retry(self, status_code: int) -> None:
+        delay = min(SIP_REG_RETRY_BASE * (2 ** self._reg_retry_attempts), SIP_REG_RETRY_MAX)
+        self._reg_retry_attempts += 1
+        monitor.add_log(
+            f"Scheduling SIP registration retry in {delay:.1f}s after failure {status_code}"
+        )
+        self._reg_retry_timer.schedule(delay)
+
+    def _retry_registration(self) -> None:
+        try:
+            monitor.add_log("Retrying SIP registration")
+            self.setRegistration(True)
+        except Exception as err:
+            monitor.add_log(f"Registration retry failed: {err}")
+            self._schedule_registration_retry(status_code=0)
 
 # Main function
 def main():
@@ -383,25 +563,89 @@ def main():
         
     # Create and initialize PJSIP library
     ep_cfg = pj.EpConfig()
+    # Apply jitter buffer preferences when provided
+    med_cfg = getattr(ep_cfg, 'medConfig', None)
+    if med_cfg is not None:
+        if SIP_JB_MIN > 0 and hasattr(med_cfg, 'jbMin'):
+            med_cfg.jbMin = SIP_JB_MIN
+        if SIP_JB_MAX > 0 and hasattr(med_cfg, 'jbMax'):
+            med_cfg.jbMax = SIP_JB_MAX
+        if SIP_JB_MAX_PRE > 0 and hasattr(med_cfg, 'jbMaxPre'):
+            med_cfg.jbMaxPre = SIP_JB_MAX_PRE
+
+    ua_cfg = getattr(ep_cfg, 'uaConfig', None)
+    if ua_cfg is not None and SIP_STUN_SERVER:
+        try:
+            stun_servers = getattr(ua_cfg, 'stunServer')
+            if stun_servers is not None:
+                if hasattr(stun_servers, 'clear'):
+                    stun_servers.clear()
+                stun_servers.append(SIP_STUN_SERVER)
+        except Exception:
+            pass
+
     ep = pj.Endpoint()
     ep.libCreate()
     ep.libInit(ep_cfg)
-    
+
     # Create SIP transport
     transport_cfg = pj.TransportConfig()
-    transport_cfg.port = 5060
+    transport_cfg.port = SIP_TRANSPORT_PORT
     transport = ep.transportCreate(pj.PJSIP_TRANSPORT_UDP, transport_cfg)
-    
+
     # Start PJSIP
     ep.libStart()
-    
+
+    # Apply codec preferences
+    if SIP_PREFERRED_CODECS:
+        try:
+            codec_infos = ep.codecEnum2()
+            available = {info.codecId: info for info in codec_infos}
+            priority = 240
+            for codec in SIP_PREFERRED_CODECS:
+                if codec in available:
+                    ep.codecSetPriority(codec, priority)
+                    priority = max(priority - 10, 0)
+                else:
+                    monitor.add_log(f"Requested codec {codec} not available")
+        except Exception as err:
+            monitor.add_log(f"Unable to set codec preferences: {err}")
+
     # Create and register account
     acc_cfg = pj.AccountConfig()
     acc_cfg.idUri = f"sip:{SIP_USER}@{SIP_DOMAIN}"
     acc_cfg.regConfig.registrarUri = f"sip:{SIP_DOMAIN}"
     cred = pj.AuthCredInfo("digest", "*", SIP_USER, 0, SIP_PASS)
     acc_cfg.sipConfig.authCreds.append(cred)
-    
+
+    nat_cfg = getattr(acc_cfg, 'natConfig', None)
+    if nat_cfg is not None:
+        if hasattr(nat_cfg, 'iceEnabled'):
+            nat_cfg.iceEnabled = SIP_ENABLE_ICE
+        if hasattr(nat_cfg, 'turnEnabled'):
+            nat_cfg.turnEnabled = SIP_ENABLE_TURN
+        if SIP_STUN_SERVER and hasattr(nat_cfg, 'stunServer'):
+            nat_cfg.stunServer = SIP_STUN_SERVER
+        if SIP_TURN_SERVER and hasattr(nat_cfg, 'turnServer'):
+            nat_cfg.turnServer = SIP_TURN_SERVER
+        if SIP_TURN_USER and hasattr(nat_cfg, 'turnUserName'):
+            nat_cfg.turnUserName = SIP_TURN_USER
+        if SIP_TURN_PASS and hasattr(nat_cfg, 'turnPassword'):
+            nat_cfg.turnPassword = SIP_TURN_PASS
+
+    media_cfg = getattr(acc_cfg, 'mediaConfig', None)
+    if media_cfg is not None:
+        disabled = getattr(pj, 'PJSUA_SRTP_DISABLED', 0)
+        optional = getattr(pj, 'PJSUA_SRTP_OPTIONAL', 1)
+        mandatory = getattr(pj, 'PJSUA_SRTP_MANDATORY', 2)
+        if hasattr(media_cfg, 'srtpUse'):
+            if SIP_ENABLE_SRTP:
+                media_cfg.srtpUse = optional if SIP_SRTP_OPTIONAL else mandatory
+            else:
+                media_cfg.srtpUse = disabled
+        if hasattr(media_cfg, 'srtpSecureSignaling'):
+            media_cfg.srtpSecureSignaling = SIP_ENABLE_SRTP
+
     acc = Account(ep)
     acc.create(acc_cfg)
     
