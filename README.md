@@ -64,6 +64,10 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
    OPENAI_API_KEY=sk‑...
    AGENT_ID=va_123456789
 
+   # Runtime toggles
+   ENABLE_SIP=true
+   ENABLE_AUDIO=true
+
    # Choose API mode: legacy or realtime
    OPENAI_MODE=realtime
 
@@ -73,6 +77,13 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
    OPENAI_TEMPERATURE=0.3
    SYSTEM_PROMPT=You are a helpful voice assistant.
    ```
+
+   Set `ENABLE_SIP=false` to run only the monitoring dashboard without
+   registering to your PBX, or `ENABLE_AUDIO=false` to keep signalling active
+   while disabling the media bridge.  Configuration is validated on startup;
+   if any required variables are missing or malformed the agent exits with a
+   detailed error that lists the offending keys in both the console output and
+   the monitoring dashboard logs.
 
    When using realtime mode the agent sends a `session.update` message to
    OpenAI containing the model, voice, audio format (16‑bit PCM at 16 kHz)
@@ -188,10 +199,21 @@ it using the configured extension number.
 
 ## Development
 
-This project is containerized for ease of deployment, but if you want to
-develop locally you can install the dependencies listed in
-`requirements.txt` and run `python agent.py`.  The monitor will start on
-port 8080 by default.
+This project ships with a `Makefile` and pre-commit configuration to
+standardise local workflows.  To get started run:
+
+```bash
+make dev       # install runtime + development dependencies and configure pre-commit
+make lint      # ruff check .
+make type      # mypy static type analysis
+make test      # pytest -q
+make format    # apply ruff's formatter
+```
+
+The `requirements-dev.txt` file extends the runtime dependencies with the
+tooling used in CI.  You can still run `python app/agent.py` directly once
+your environment variables are configured; the monitor listens on port 8080
+by default.
 
 ### Contributing
 

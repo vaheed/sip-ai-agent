@@ -1,3 +1,4 @@
+import os
 import sys
 import types
 from pathlib import Path
@@ -5,6 +6,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+_DEFAULT_ENV = {
+    "SIP_DOMAIN": "example.com",
+    "SIP_USER": "1001",
+    "SIP_PASS": "secret",
+    "OPENAI_API_KEY": "test-key",
+    "AGENT_ID": "test-agent",
+    "ENABLE_SIP": "true",
+    "ENABLE_AUDIO": "true",
+}
+
+for _key, _value in _DEFAULT_ENV.items():
+    os.environ.setdefault(_key, _value)
 
 
 class _FakeAudioMedia:
@@ -192,6 +206,7 @@ sys.modules.setdefault("flask", _fake_flask)
 
 _fake_dotenv = types.ModuleType("dotenv")
 _fake_dotenv.load_dotenv = lambda *args, **kwargs: None
+_fake_dotenv.dotenv_values = lambda *args, **kwargs: {}
 sys.modules.setdefault("dotenv", _fake_dotenv)
 
 

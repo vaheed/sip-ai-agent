@@ -1,11 +1,35 @@
 #!/usr/bin/env python3
 import json
-import os
 import time
 import threading
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from flask import Flask, jsonify, render_template_string, request
+
+try:
+    from .config import (
+        ConfigurationError,
+        get_settings,
+        merge_env,
+        read_env_file,
+        validate_env_map,
+        write_env_file,
+    )
+except ImportError as exc:  # pragma: no cover - script execution fallback
+    if "attempted relative import" in str(exc) or getattr(exc, "name", "") in {
+        "config",
+        "app.config",
+    }:
+        from config import (  # type: ignore
+            ConfigurationError,
+            get_settings,
+            merge_env,
+            read_env_file,
+            validate_env_map,
+            write_env_file,
+        )
+    else:  # pragma: no cover - surface configuration import issues
+        raise
 
 try:
     from .observability import (
@@ -22,69 +46,24 @@ except ImportError:  # pragma: no cover - script execution fallback
         metrics,
     )
 
-def _env_path():
-    """
-    Return the absolute path to the .env file located two directories above
-    this monitor module. This function assumes the project structure of
-    /project/sip-ai-agent-main/app/monitor.py and returns
-    /project/sip-ai-agent-main/.env. Modify this logic if the repository
-    layout changes.
-    """
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-
 
 def load_config() -> dict:
-    """
-    Load key/value pairs from the project's .env file.
+    """Return the current configuration as a mapping of strings."""
 
-    The .env file stores configuration values used by the SIP agent. Lines
-    starting with '#' are treated as comments and ignored. Values are
-    returned as strings. If the file does not exist, an empty dict is
-    returned. Unknown whitespace around keys/values is stripped.
-    """
-    config = {}
-    env_path = _env_path()
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    if '=' in line:
-                        key, value = line.split('=', 1)
-                        config[key.strip()] = value.strip()
-        except Exception:
-            # Silently ignore read errors; caller can handle missing keys
-            pass
-    return config
+    try:
+        return get_settings().as_env()
+    except ConfigurationError:
+        return read_env_file()
 
 
 def save_config(new_config: dict) -> None:
-    """
-    Persist updated configuration values to the project's .env file.
+    """Validate and persist configuration updates to the ``.env`` file."""
 
-    Any keys provided in ``new_config`` will override existing values. Keys
-    not present in ``new_config`` are preserved. The resulting file is
-    written back to disk as simple ``KEY=value`` lines. Comments and
-    ordering from the original file are not preserved.
-
-    :param new_config: mapping of environment variable names to new values
-    """
-    env_path = _env_path()
-    # Start with existing config
-    config = load_config()
-    # Override with new values (cast everything to string)
-    for k, v in new_config.items():
-        config[k] = str(v)
-    # Write back
-    lines = [f"{key}={value}" for key, value in config.items()]
-    try:
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
-    except Exception:
-        # If we cannot write the env file, surface an error to the caller
-        raise
+    existing = read_env_file()
+    merged = merge_env(existing, new_config)
+    validate_env_map(merged, include_os_environ=False)
+    write_env_file(merged)
+    get_settings.cache_clear()
 
 
 class Monitor:
@@ -103,6 +82,7 @@ class Monitor:
     # variables that should be editable through the UI.
     CONFIG_KEYS = [
         'SIP_DOMAIN', 'SIP_USER', 'SIP_PASS', 'OPENAI_API_KEY', 'AGENT_ID',
+        'ENABLE_SIP', 'ENABLE_AUDIO',
         'OPENAI_MODE', 'OPENAI_MODEL', 'OPENAI_VOICE', 'OPENAI_TEMPERATURE', 'SYSTEM_PROMPT',
         'SIP_TRANSPORT_PORT', 'SIP_JB_MIN', 'SIP_JB_MAX', 'SIP_JB_MAX_PRE',
         'SIP_ENABLE_ICE', 'SIP_ENABLE_TURN', 'SIP_STUN_SERVER', 'SIP_TURN_SERVER',
@@ -120,7 +100,7 @@ class Monitor:
         self.api_tokens_used = 0
         self.logs = []
         self.max_logs = 100
-        self._call_context: Dict[str, Dict[str, object]] = {}
+        self._call_context: Dict[str, Dict[str, Any]] = {}
         self.realtime_ws_state: str = "unknown"
         self.realtime_ws_detail: Optional[str] = None
         self.realtime_ws_last_event: Optional[float] = None
@@ -324,6 +304,22 @@ class Monitor:
                     save_config(new_config)
                     self.add_log(f"Configuration updated: {', '.join(new_config.keys())}")
                 return jsonify({'success': True})
+            except ConfigurationError as err:
+                self.add_log(
+                    f"Configuration validation error: {err}",
+                    level='error',
+                    event='configuration_error',
+                )
+                return (
+                    jsonify(
+                        {
+                            'success': False,
+                            'error': str(err),
+                            'details': err.details,
+                        }
+                    ),
+                    400,
+                )
             except Exception as e:
                 self.add_log(f"Error updating config: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
@@ -396,7 +392,7 @@ class Monitor:
 
     def remove_call(self, call_id: str) -> None:
         context = self._call_context.get(call_id, {})
-        correlation_id = context.get("correlation_id")
+        correlation_id = cast(Optional[str], context.get("correlation_id"))
         with correlation_scope(correlation_id):
             if call_id in self.active_calls:
                 self.active_calls.remove(call_id)
@@ -415,18 +411,18 @@ class Monitor:
             if call_id in self._call_context:
                 self._call_context.pop(call_id, None)
 
-            log_fields = {'event': 'call_ended', 'call_id': call_id}
+            log_fields: Dict[str, Any] = {'event': 'call_ended', 'call_id': call_id}
             if duration is not None:
                 log_fields['duration_seconds'] = duration
             self.add_log(f"Call ended: {call_id}", **log_fields)
 
     def update_tokens(self, tokens: int, call_id: Optional[str] = None) -> None:
         context = self._call_context.get(call_id) if call_id else None
-        correlation_id = context.get('correlation_id') if context else None
+        correlation_id = cast(Optional[str], context.get('correlation_id')) if context else None
         with correlation_scope(correlation_id):
             self.api_tokens_used += tokens
             metrics.record_token_usage(tokens)
-            log_fields = {
+            log_fields: Dict[str, Any] = {
                 'event': 'token_usage',
                 'tokens': tokens,
                 'total_tokens': self.api_tokens_used,
@@ -440,13 +436,13 @@ class Monitor:
 
     def update_realtime_ws(self, healthy: bool, detail: Optional[str] = None, call_id: Optional[str] = None) -> None:
         context = self._call_context.get(call_id) if call_id else None
-        correlation_id = context.get('correlation_id') if context else None
+        correlation_id = cast(Optional[str], context.get('correlation_id')) if context else None
         with correlation_scope(correlation_id):
             self.realtime_ws_state = 'healthy' if healthy else 'unhealthy'
             self.realtime_ws_detail = detail
             self.realtime_ws_last_event = time.time()
             metrics.record_audio_event('realtime_ws_healthy' if healthy else 'realtime_ws_unhealthy')
-            log_fields = {
+            log_fields: Dict[str, Any] = {
                 'event': 'realtime_ws',
                 'healthy': healthy,
             }
@@ -458,10 +454,10 @@ class Monitor:
 
     def record_audio_event(self, name: str, call_id: Optional[str] = None, **fields) -> None:
         context = self._call_context.get(call_id) if call_id else None
-        correlation_id = context.get('correlation_id') if context else None
+        correlation_id = cast(Optional[str], context.get('correlation_id')) if context else None
         with correlation_scope(correlation_id):
             metrics.record_audio_event(name)
-            log_fields = {
+            log_fields: Dict[str, Any] = {
                 'event': 'audio_pipeline',
                 'audio_event': name,
             }
