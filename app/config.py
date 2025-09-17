@@ -33,7 +33,7 @@ _ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
         },
     ),
     (
-        "# Runtime toggles",
+        "# Feature toggles & realtime session",
         {
             "ENABLE_SIP": "true",
             "ENABLE_AUDIO": "true",
@@ -45,12 +45,18 @@ _ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
         },
     ),
     (
-        "# Optional SIP media/network tuning",
+        "# Audio pipeline",
         {
             "SIP_TRANSPORT_PORT": "5060",
+            "SIP_PREFERRED_CODECS": "PCMU,PCMA,opus",
             "SIP_JB_MIN": "0",
             "SIP_JB_MAX": "0",
             "SIP_JB_MAX_PRE": "0",
+        },
+    ),
+    (
+        "# NAT traversal & media security",
+        {
             "SIP_ENABLE_ICE": "false",
             "SIP_ENABLE_TURN": "false",
             "SIP_STUN_SERVER": "",
@@ -59,7 +65,6 @@ _ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
             "SIP_TURN_PASS": "",
             "SIP_ENABLE_SRTP": "false",
             "SIP_SRTP_OPTIONAL": "true",
-            "SIP_PREFERRED_CODECS": "PCMU,PCMA,opus",
         },
     ),
     (
