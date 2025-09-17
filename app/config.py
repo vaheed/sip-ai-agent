@@ -1,16 +1,78 @@
 """Centralised configuration loading and validation utilities."""
+
 from __future__ import annotations
 
+import argparse
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple, cast
+from typing import Any, Dict, Iterable, List, Sequence, Tuple, cast
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BASE_DIR / ".env"
+ENV_EXAMPLE_FILE = BASE_DIR / "env.example"
+
+_ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
+    (
+        "# PBX",
+        {
+            "SIP_DOMAIN": "your.asterisk.ip.or.domain",
+            "SIP_USER": "1001",
+            "SIP_PASS": "yourpassword",
+        },
+    ),
+    (
+        "# OpenAI",
+        {
+            "OPENAI_API_KEY": "sk-...",
+            "AGENT_ID": "va_...",
+        },
+    ),
+    (
+        "# Runtime toggles",
+        {
+            "ENABLE_SIP": "true",
+            "ENABLE_AUDIO": "true",
+            "OPENAI_MODE": "legacy",
+            "OPENAI_MODEL": "gpt-realtime",
+            "OPENAI_VOICE": "alloy",
+            "OPENAI_TEMPERATURE": "0.3",
+            "SYSTEM_PROMPT": "You are a helpful voice assistant.",
+        },
+    ),
+    (
+        "# Optional SIP media/network tuning",
+        {
+            "SIP_TRANSPORT_PORT": "5060",
+            "SIP_JB_MIN": "0",
+            "SIP_JB_MAX": "0",
+            "SIP_JB_MAX_PRE": "0",
+            "SIP_ENABLE_ICE": "false",
+            "SIP_ENABLE_TURN": "false",
+            "SIP_STUN_SERVER": "",
+            "SIP_TURN_SERVER": "",
+            "SIP_TURN_USER": "",
+            "SIP_TURN_PASS": "",
+            "SIP_ENABLE_SRTP": "false",
+            "SIP_SRTP_OPTIONAL": "true",
+            "SIP_PREFERRED_CODECS": "PCMU,PCMA,opus",
+        },
+    ),
+    (
+        "# Retry behaviour (seconds)",
+        {
+            "SIP_REG_RETRY_BASE": "2.0",
+            "SIP_REG_RETRY_MAX": "60.0",
+            "SIP_INVITE_RETRY_BASE": "1.0",
+            "SIP_INVITE_RETRY_MAX": "30.0",
+            "SIP_INVITE_MAX_ATTEMPTS": "5",
+        },
+    ),
+]
 
 
 class ConfigurationError(RuntimeError):
@@ -42,9 +104,7 @@ class Settings(BaseSettings):
     openai_model: str = Field("gpt-realtime", alias="OPENAI_MODEL")
     openai_voice: str = Field("alloy", alias="OPENAI_VOICE")
     openai_temperature: float = Field(0.3, alias="OPENAI_TEMPERATURE", ge=0.0, le=2.0)
-    system_prompt: str = Field(
-        "You are a helpful voice assistant.", alias="SYSTEM_PROMPT"
-    )
+    system_prompt: str = Field("You are a helpful voice assistant.", alias="SYSTEM_PROMPT")
 
     enable_sip: bool = Field(True, alias="ENABLE_SIP")
     enable_audio: bool = Field(True, alias="ENABLE_AUDIO")
@@ -61,9 +121,7 @@ class Settings(BaseSettings):
     sip_turn_pass: str | None = Field(None, alias="SIP_TURN_PASS")
     sip_enable_srtp: bool = Field(False, alias="SIP_ENABLE_SRTP")
     sip_srtp_optional: bool = Field(True, alias="SIP_SRTP_OPTIONAL")
-    sip_preferred_codecs: Tuple[str, ...] = Field(
-        (), alias="SIP_PREFERRED_CODECS"
-    )
+    sip_preferred_codecs: Tuple[str, ...] = Field((), alias="SIP_PREFERRED_CODECS")
 
     sip_reg_retry_base: float = Field(2.0, alias="SIP_REG_RETRY_BASE", ge=0.0)
     sip_reg_retry_max: float = Field(60.0, alias="SIP_REG_RETRY_MAX", ge=0.0)
@@ -142,9 +200,7 @@ class Settings(BaseSettings):
         return env
 
 
-_FIELD_ALIAS: Dict[str, str] = {
-    name: field.alias or name for name, field in Settings.model_fields.items()
-}
+_FIELD_ALIAS: Dict[str, str] = {name: field.alias or name for name, field in Settings.model_fields.items()}
 _ALIAS_FIELD: Dict[str, str] = {alias: name for name, alias in _FIELD_ALIAS.items()}
 
 
@@ -168,9 +224,7 @@ def get_settings() -> Settings:
         return Settings()  # type: ignore[call-arg]
     except ValidationError as exc:  # pragma: no cover - exercised at runtime
         details = _format_validation_errors(exc)
-        message = "Invalid environment configuration:\n" + "\n".join(
-            f"  - {item}" for item in details
-        )
+        message = "Invalid environment configuration:\n" + "\n".join(f"  - {item}" for item in details)
         raise ConfigurationError(message, details=details) from exc
 
 
@@ -197,6 +251,36 @@ def read_env_file(path: Path | None = None) -> Dict[str, str]:
     return data
 
 
+def generate_env_example_lines() -> List[str]:
+    """Return the canonical ``.env`` example as a list of lines."""
+
+    lines: List[str] = []
+    for section_index, (header, values) in enumerate(_ENV_EXAMPLE_TEMPLATE):
+        if section_index > 0:
+            lines.append("")
+        if header:
+            lines.append(header)
+        for key, value in values.items():
+            lines.append(f"{key}={value}")
+    return lines
+
+
+def write_env_example(path: Path | None = None) -> Path:
+    """Write the canonical ``.env`` example to ``path``.
+
+    Parameters
+    ----------
+    path:
+        Target file. Defaults to :data:`ENV_EXAMPLE_FILE` when not provided.
+    """
+
+    target = path or ENV_EXAMPLE_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    content = "\n".join(generate_env_example_lines()) + "\n"
+    target.write_text(content, encoding="utf-8")
+    return target
+
+
 def merge_env(base: Dict[str, str], overrides: Dict[str, str]) -> Dict[str, str]:
     """Merge two ``KEY=value`` mappings, returning a new dictionary."""
 
@@ -206,9 +290,7 @@ def merge_env(base: Dict[str, str], overrides: Dict[str, str]) -> Dict[str, str]
     return merged
 
 
-def validate_env_map(
-    values: Dict[str, str], *, include_os_environ: bool = False
-) -> Settings:
+def validate_env_map(values: Dict[str, str], *, include_os_environ: bool = False) -> Settings:
     """Validate a raw mapping of environment variables."""
 
     combined: Dict[str, str] = {}
@@ -219,20 +301,24 @@ def validate_env_map(
     combined.update(values)
     settings_payload = cast(
         Dict[str, Any],
-        {
-            _ALIAS_FIELD[key]: combined[key]
-            for key in combined
-            if key in _ALIAS_FIELD
-        },
+        {_ALIAS_FIELD[key]: combined[key] for key in combined if key in _ALIAS_FIELD},
     )
     try:
         return Settings(**settings_payload)
     except ValidationError as exc:
         details = _format_validation_errors(exc)
-        message = "Invalid environment configuration:\n" + "\n".join(
-            f"  - {item}" for item in details
-        )
+        message = "Invalid environment configuration:\n" + "\n".join(f"  - {item}" for item in details)
         raise ConfigurationError(message, details=details) from exc
+
+
+def validate_env_file(path: Path | None = None, *, include_os_environ: bool = False) -> Settings:
+    """Validate the ``.env`` file located at ``path`` and return the settings."""
+
+    target = path or env_file_path()
+    if not target.exists():
+        raise FileNotFoundError(target)
+    values = read_env_file(target)
+    return validate_env_map(values, include_os_environ=include_os_environ)
 
 
 def write_env_file(values: Dict[str, str], path: Path | None = None) -> None:
@@ -242,3 +328,92 @@ def write_env_file(values: Dict[str, str], path: Path | None = None) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{key}={value}" for key, value in sorted(values.items())]
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Validate or generate environment files for the SIP AI agent.",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    validate_parser = subparsers.add_parser("validate", help="Validate a .env file using the Settings schema.")
+    validate_parser.add_argument(
+        "--path",
+        type=Path,
+        default=env_file_path(),
+        help="Path to the .env file (defaults to the repository root .env)",
+    )
+    validate_parser.add_argument(
+        "--include-os",
+        action="store_true",
+        help="Merge matching keys from the current process environment before validation.",
+    )
+
+    sample_parser = subparsers.add_parser(
+        "sample",
+        help="Print or regenerate the canonical env.example file.",
+    )
+    sample_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the sample to disk instead of printing to stdout.",
+    )
+    sample_parser.add_argument(
+        "--path",
+        type=Path,
+        default=ENV_EXAMPLE_FILE,
+        help="Destination path when using --write (defaults to env.example).",
+    )
+    sample_parser.add_argument(
+        "--no-print",
+        action="store_true",
+        help="Suppress printing the sample contents when --write is supplied.",
+    )
+
+    return parser
+
+
+def _emit_configuration_error(exc: ConfigurationError) -> None:
+    print("Invalid environment configuration:", file=sys.stderr)
+    for detail in exc.details:
+        print(f"  - {detail}", file=sys.stderr)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for ``python -m app.config`` CLI invocations."""
+
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "validate":
+        target_path: Path = args.path
+        try:
+            validate_env_file(target_path, include_os_environ=args.include_os)
+        except FileNotFoundError:
+            print(f"Environment file not found: {target_path}", file=sys.stderr)
+            return 1
+        except ConfigurationError as exc:
+            _emit_configuration_error(exc)
+            return 1
+        else:
+            print(f"{target_path} is valid.")
+            return 0
+
+    if args.command == "sample":
+        lines = generate_env_example_lines()
+        if args.write:
+            destination: Path = args.path
+            write_env_example(destination)
+            if not args.no_print:
+                print("\n".join(lines))
+            print(f"Sample environment written to {destination}")
+        else:
+            print("\n".join(lines))
+        return 0
+
+    parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised via CLI
+    raise SystemExit(main())

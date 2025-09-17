@@ -36,6 +36,7 @@ If you encounter unexpected behaviour or a defect:
 
    ```bash
    make dev
+   make env-validate  # optional: confirm your .env satisfies the schema
    ```
 
    This installs the packages listed in `requirements-dev.txt` and registers
@@ -55,6 +56,7 @@ If you encounter unexpected behaviour or a defect:
    make lint
    make type
    make test
+   make env-validate
    ```
 
    The lint target runs `ruff check`, the type target executes `mypy` with
