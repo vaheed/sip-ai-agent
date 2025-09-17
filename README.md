@@ -108,29 +108,60 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
 
 ### Advanced SIP configuration
 
-The `.env` file also exposes optional knobs to tune media behaviour and NAT
-traversal.  Every setting has a documented default so you can safely leave it
-unset.  When the values are blank or set to `0`/`false` the agent relies on
-PJSIP’s defaults and features remain disabled.
+The `.env` file exposes optional knobs to tune realtime media handling, retry
+behaviour and NAT traversal.  Each key maps to the strongly typed Pydantic
+`Settings` model so invalid values fail fast during startup and the dashboard
+can safely surface defaults when a field is cleared.
+
+#### Feature toggles & realtime session
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `SIP_TRANSPORT_PORT` | `5060` | UDP port used for signalling. |
-| `SIP_JB_MIN`, `SIP_JB_MAX`, `SIP_JB_MAX_PRE` | `0` | Jitter buffer sizes in milliseconds. Zero keeps the library defaults. |
-| `SIP_ENABLE_ICE` | `false` | Toggle ICE negotiation for NAT traversal. |
-| `SIP_ENABLE_TURN` | `false` | Enable TURN relaying. Requires TURN server credentials. |
-| `SIP_STUN_SERVER` | _blank_ | Optional STUN server URI. |
-| `SIP_TURN_SERVER`, `SIP_TURN_USER`, `SIP_TURN_PASS` | _blank_ | TURN credentials. Leave blank to disable TURN. |
-| `SIP_ENABLE_SRTP` | `false` | When `true`, SRTP is negotiated. |
-| `SIP_SRTP_OPTIONAL` | `true` | If SRTP is enabled, `true` allows fallback to RTP, `false` enforces SRTP. |
-| `SIP_PREFERRED_CODECS` | _blank_ | Comma-separated codec list. Unknown codecs are ignored; blank keeps library order. |
-| `SIP_REG_RETRY_BASE`/`MAX` | `2.0` / `60.0` | Exponential backoff window for registration retries (seconds). |
-| `SIP_INVITE_RETRY_BASE`/`MAX` | `1.0` / `30.0` | Backoff for INVITE retries when outbound calls fail with 4xx/5xx. |
-| `SIP_INVITE_MAX_ATTEMPTS` | `5` | Maximum INVITE retry attempts before giving up. |
+| `ENABLE_SIP` | `true` | Disable to run only the dashboard without registering to the PBX. |
+| `ENABLE_AUDIO` | `true` | Disable to keep SIP signalling active while muting the media bridge. |
+| `OPENAI_MODE` | `legacy` | Choose between the legacy `/v1/audio/speech` WebSocket mode and `realtime`. |
+| `OPENAI_MODEL` | `gpt-realtime` | Model requested in the initial `session.update` message. |
+| `OPENAI_VOICE` | `alloy` | Voice to synthesise during realtime playback. |
+| `OPENAI_TEMPERATURE` | `0.3` | Sampling temperature for OpenAI responses (0–2). |
+| `SYSTEM_PROMPT` | `You are a helpful voice assistant.` | System instructions sent with each realtime session. |
 
-The monitoring dashboard exposes these fields so you can update them at
-runtime.  If a setting is cleared, the agent automatically falls back to the
-safe defaults listed above.
+#### Audio pipeline controls
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `SIP_TRANSPORT_PORT` | `5060` | UDP port used for SIP signalling. Change if your PBX expects a non-standard port. |
+| `SIP_PREFERRED_CODECS` | `PCMU,PCMA,opus` | Comma-separated codec priority list; unknown codecs are ignored. |
+| `SIP_JB_MIN` | `0` | Minimum jitter buffer in milliseconds. Set >0 to pin a floor for bursty networks. |
+| `SIP_JB_MAX` | `0` | Maximum jitter buffer size in milliseconds. Increase to smooth jitter at the cost of latency. |
+| `SIP_JB_MAX_PRE` | `0` | Pre-echo jitter buffer limit in milliseconds. Useful when bridging to high-latency trunks. |
+
+#### NAT traversal & media security
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `SIP_ENABLE_ICE` | `false` | Toggle ICE negotiation; enable when endpoints sit behind symmetric NAT. |
+| `SIP_ENABLE_TURN` | `false` | Enable TURN relaying. Requires TURN server credentials below. |
+| `SIP_STUN_SERVER` | _blank_ | Optional STUN URI such as `stun:stun.l.google.com:19302`. |
+| `SIP_TURN_SERVER` | _blank_ | TURN server URI (e.g. `turn:turn.example.com:3478`). Leave blank to disable. |
+| `SIP_TURN_USER` | _blank_ | TURN username when relaying media. |
+| `SIP_TURN_PASS` | _blank_ | TURN password when relaying media. |
+| `SIP_ENABLE_SRTP` | `false` | Enable to negotiate Secure RTP for encrypted audio. |
+| `SIP_SRTP_OPTIONAL` | `true` | When SRTP is on, allow RTP fallback (`true`) or enforce SRTP-only (`false`). |
+
+#### Retry and backoff controls
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `SIP_REG_RETRY_BASE` | `2.0` | Seconds before the first registration retry. Doubles until `SIP_REG_RETRY_MAX`. |
+| `SIP_REG_RETRY_MAX` | `60.0` | Upper bound for registration retry delays. |
+| `SIP_INVITE_RETRY_BASE` | `1.0` | Seconds before retrying an outbound INVITE after a 4xx/5xx failure. |
+| `SIP_INVITE_RETRY_MAX` | `30.0` | Upper bound for INVITE retry delays. |
+| `SIP_INVITE_MAX_ATTEMPTS` | `5` | Maximum number of INVITE attempts before the call is marked failed. |
+
+Adjusting these values lets you tune the retry cadence for unreliable trunks,
+increase jitter buffers for choppy links or prioritise wideband codecs.  The
+monitoring dashboard exposes every field so you can experiment at runtime; when
+a value is cleared the agent falls back to the safe defaults shown above.
 
 3. **Build and start the container**
 
@@ -166,6 +197,71 @@ agent:
 * **Configuration editor** — Presents the contents of your `.env` file in a
   form.  Update values and click save to write them back to disk.  A container
   restart is required to apply changes.
+
+## Operations and troubleshooting
+
+### SIP failure modes
+
+The agent surfaces common SIP registration and call failures in both the
+dashboard log stream and the structured JSON logs emitted by the container.
+Use the table below to map the most frequent responses to corrective action:
+
+| Code | When it appears | Suggested action |
+| --- | --- | --- |
+| `401` / `407` | Registration challenge or INVITE authentication failure. | Verify `SIP_USER`/`SIP_PASS`, and watch the `register_retries` counter on `/metrics` to confirm retries are happening. |
+| `403` | PBX rejected the credentials even after authentication. | Confirm the extension is allowed to register from the agent’s IP and not rate-limited. |
+| `404` / `484` | PBX could not locate the requested extension. | Check the dialled target, trunk routing and any translation rules on the PBX. |
+| `415` / `488` | Unsupported media type or codec mismatch. | Adjust `SIP_PREFERRED_CODECS` or enable SRTP to match the PBX media profile. |
+| `480` / `503` | Destination temporarily unavailable or service unavailable. | Inspect NAT/firewall reachability and TURN/STUN configuration; `invite_retries` increments indicate the automatic backoff is active. |
+| `500` / `502` | PBX internal error or bad gateway. | Review PBX logs for upstream issues and consider increasing `SIP_INVITE_RETRY_MAX` to give the remote server time to recover. |
+
+When a call fails, the dashboard highlights the SIP status code and the
+`metrics` endpoint exposes the associated retry counters so you can correlate
+spikes with network events or PBX changes.
+
+### Firewall and RTP port planning
+
+Open UDP port `5060` (or the value configured via `SIP_TRANSPORT_PORT`) and the
+media range `16000–16100/udp` between the PBX and the Docker host.  On
+firewalls that inspect SIP ALG traffic, disable the ALG or pin static
+forwarding rules to prevent rewritten SDP payloads.  For double-NAT or cloud
+deployments, ensure the PBX can route media back to the agent—ICE or TURN (see
+below) can relay audio when direct UDP paths fail.
+
+### SRTP and NAT setup
+
+Secure media and NAT traversal are toggled entirely through environment
+variables.  Enable `SIP_ENABLE_SRTP=true` to negotiate encrypted audio and set
+`SIP_SRTP_OPTIONAL=false` when the PBX mandates SRTP-only sessions.  For
+networks behind symmetric NAT, enable `SIP_ENABLE_ICE=true` and provide a
+`SIP_STUN_SERVER` such as `stun:stun.l.google.com:19302`.  If direct paths fail
+or you need to hairpin through the public internet, configure TURN credentials
+(`SIP_TURN_SERVER`, `SIP_TURN_USER`, `SIP_TURN_PASS`) and set
+`SIP_ENABLE_TURN=true` so the agent relays RTP through your media proxy.
+
+### Troubleshooting with metrics and logs
+
+Structured logs include a `correlation_id`, making it easy to follow a single
+call across SIP events, OpenAI websocket activity and audio bridge state
+changes.  Access them via `docker compose logs` or the dashboard log pane.  The
+monitor also exposes `/metrics`, returning JSON snapshots with call counts,
+latency percentiles, token usage and the audio pipeline event counters (e.g.
+`legacy_stream_started`, `realtime_ws_unhealthy`).  Use `curl` while a call is
+active to inspect jitter, retry and websocket health in real time:
+
+```bash
+curl http://localhost:8080/metrics | jq
+```
+
+### Tuning retries and the audio pipeline
+
+Retry timings and media buffering are governed by the Pydantic `Settings`
+model.  Update values in `.env`, run `python -m app.config validate` to check
+types and bounds, then restart the container.  Increasing
+`SIP_INVITE_MAX_ATTEMPTS` helps stubborn trunks, while widening
+`SIP_JB_MAX`/`SIP_JB_MAX_PRE` smooths jitter at the expense of latency.  When
+optimising codec selection, reorder `SIP_PREFERRED_CODECS` to prioritise wideband
+codecs such as `opus`—the agent will automatically ignore unknown names.
 
 ## FreePBX Integration
 
@@ -228,10 +324,25 @@ make env-validate  # validate .env against the pydantic schema
 make env-sample    # regenerate env.example from the canonical template
 ```
 
+The `tests/` directory now includes coverage for the realtime and legacy audio
+pipelines (`tests/test_audio_pipeline.py`) alongside configuration validation.
+Run `make test` (or `pytest -q`) after tweaking codecs, jitter buffers or retry
+windows to ensure the new behaviour still streams audio as expected.
+
+### Testing & CI
+
 The `requirements-dev.txt` file extends the runtime dependencies with the
-tooling used in CI.  You can still run `python app/agent.py` directly once
-your environment variables are configured; the monitor listens on port 8080
-by default.
+tooling used in CI.  GitHub Actions runs the same checks as the Makefile:
+
+* `make lint` → `ruff check` for style and static analysis.
+* `make type` → `mypy` against the `app/` package.
+* `make test` → `pytest -q` exercising SIP call flows and audio buffering.
+* `make pre-commit` → `pre-commit run --all-files` to mirror the aggregate CI job.
+
+Running `make dev` once installs the hooks so `pre-commit` enforces formatting
+before each commit.  You can still run `python app/agent.py` directly once your
+environment variables are configured; the monitor listens on port 8080 by
+default.
 
 ### Contributing
 
