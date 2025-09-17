@@ -82,7 +82,11 @@ def test_realtime_send_and_commit(monkeypatch):
         call._realtime_input_committed = False
 
         recorded_tokens = []
-        monkeypatch.setattr(agent.monitor, "update_tokens", recorded_tokens.append)
+
+        def record_tokens(tokens, *args, **kwargs):
+            recorded_tokens.append(tokens)
+
+        monkeypatch.setattr(agent.monitor, "update_tokens", record_tokens)
 
         frame = b"\x01\x02" * (agent.FRAME_BYTES // 2)
         callback.capture_queue.put_nowait(frame)
