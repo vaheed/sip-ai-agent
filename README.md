@@ -79,6 +79,32 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
    and system prompt【826943400076790†L230-L249】.  This ensures the session is
    configured correctly before audio streaming begins.
 
+### Advanced SIP configuration
+
+The `.env` file also exposes optional knobs to tune media behaviour and NAT
+traversal.  Every setting has a documented default so you can safely leave it
+unset.  When the values are blank or set to `0`/`false` the agent relies on
+PJSIP’s defaults and features remain disabled.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `SIP_TRANSPORT_PORT` | `5060` | UDP port used for signalling. |
+| `SIP_JB_MIN`, `SIP_JB_MAX`, `SIP_JB_MAX_PRE` | `0` | Jitter buffer sizes in milliseconds. Zero keeps the library defaults. |
+| `SIP_ENABLE_ICE` | `false` | Toggle ICE negotiation for NAT traversal. |
+| `SIP_ENABLE_TURN` | `false` | Enable TURN relaying. Requires TURN server credentials. |
+| `SIP_STUN_SERVER` | _blank_ | Optional STUN server URI. |
+| `SIP_TURN_SERVER`, `SIP_TURN_USER`, `SIP_TURN_PASS` | _blank_ | TURN credentials. Leave blank to disable TURN. |
+| `SIP_ENABLE_SRTP` | `false` | When `true`, SRTP is negotiated. |
+| `SIP_SRTP_OPTIONAL` | `true` | If SRTP is enabled, `true` allows fallback to RTP, `false` enforces SRTP. |
+| `SIP_PREFERRED_CODECS` | _blank_ | Comma-separated codec list. Unknown codecs are ignored; blank keeps library order. |
+| `SIP_REG_RETRY_BASE`/`MAX` | `2.0` / `60.0` | Exponential backoff window for registration retries (seconds). |
+| `SIP_INVITE_RETRY_BASE`/`MAX` | `1.0` / `30.0` | Backoff for INVITE retries when outbound calls fail with 4xx/5xx. |
+| `SIP_INVITE_MAX_ATTEMPTS` | `5` | Maximum INVITE retry attempts before giving up. |
+
+The monitoring dashboard exposes these fields so you can update them at
+runtime.  If a setting is cleared, the agent automatically falls back to the
+safe defaults listed above.
+
 3. **Build and start the container**
 
    ```bash
