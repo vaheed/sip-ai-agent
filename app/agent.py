@@ -14,10 +14,27 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import pjsua2 as pj
 
+try:
+    from .observability import (
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
+except ImportError:  # pragma: no cover - script execution fallback
+    from observability import (  # type: ignore
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
+
 from monitor import monitor
 
 # Load environment variables
 load_dotenv()
+
+logger = get_logger(__name__)
 
 # SIP Configuration
 SIP_DOMAIN = os.getenv('SIP_DOMAIN')
@@ -321,72 +338,153 @@ class Call(pj.Call):
         self._invite_attempts = 0
         self._invite_retry_timer = EndpointTimer(self.acc.ep, self._retry_invite)
         self._realtime_input_committed = False
+        self.correlation_id = generate_correlation_id()
+        self.monitor_call_id: Optional[str] = None
+
+    def call_label(self) -> str:
+        existing = getattr(self, 'monitor_call_id', None)
+        if existing:
+            return existing
+        call_identifier = getattr(self, 'call_id', pj.PJSUA_INVALID_ID)
+        if call_identifier != pj.PJSUA_INVALID_ID:
+            derived = f"Call-{call_identifier}"
+        else:
+            target_uri = getattr(self, 'target_uri', None)
+            if target_uri:
+                derived = f"Call-{target_uri}"
+            else:
+                derived = f"Call-{id(self)}"
+        self.monitor_call_id = derived
+        return derived
+
+    def _ensure_correlation_id(self) -> str:
+        correlation_id = getattr(self, 'correlation_id', None)
+        if not correlation_id:
+            correlation_id = generate_correlation_id()
+            setattr(self, 'correlation_id', correlation_id)
+        return correlation_id
+
+    @contextlib.contextmanager
+    def _correlation_context(self):
+        with correlation_scope(self._ensure_correlation_id()):
+            yield
+
+    def _log_event(self, message: str, level: str = 'info', **fields) -> None:
+        fields.setdefault('call_id', self.call_label())
+        with self._correlation_context():
+            monitor.add_log(message, level=level, **fields)
+
+    def _start_async_agent(self, coroutine_fn, mode: str) -> None:
+        correlation_id = self._ensure_correlation_id()
+
+        def runner():
+            try:
+                with correlation_scope(correlation_id):
+                    asyncio.run(coroutine_fn())
+            except Exception as err:  # pragma: no cover - defensive logging
+                with correlation_scope(correlation_id):
+                    self._log_event(
+                        "OpenAI agent thread crashed",
+                        level='error',
+                        event='openai_agent_error',
+                        mode=mode,
+                        error=str(err),
+                    )
+                raise
+
+        thread_name = f"OpenAI-{mode}-{self.call_label()}"
+        self.openai_thread = threading.Thread(target=runner, name=thread_name, daemon=True)
+        self.openai_thread.start()
 
     def onCallState(self, prm):
         ci = self.getInfo()
-        print(f"Call state: {ci.stateText}")
-        monitor.add_log(f"Call state: {ci.stateText}")
-        
-        if ci.state == pj.PJSIP_INV_STATE_CONFIRMED:
-            # Call is established
-            print("Call established, starting OpenAI Voice Agent")
-            monitor.add_log("Call established, starting OpenAI Voice Agent")
-            self._invite_attempts = 0
-            self._invite_retry_timer.cancel()
+        call_id = self.call_label()
+        with self._correlation_context():
+            self._log_event(
+                "Call state changed",
+                event="sip_call_state",
+                sip_state=ci.stateText,
+                sip_state_code=getattr(ci, 'state', None),
+            )
 
-            # Create audio callback and connect audio media
-            self.audio_callback = AudioCallback(self)
-            call_slot = self.getAudioMedia(-1)
-            call_slot.startTransmit(self.audio_callback)
-            self.audio_callback.startTransmit(call_slot)
+            if ci.state == pj.PJSIP_INV_STATE_CONFIRMED:
+                # Call is established
+                self._invite_attempts = 0
+                self._invite_retry_timer.cancel()
+                self._log_event(
+                    "Call established, starting OpenAI Voice Agent",
+                    event="call_established",
+                )
+                monitor.record_audio_event('call_established', call_id=call_id)
 
-            # Launch the appropriate OpenAI agent depending on the selected mode.
-            # Using asyncio.create_task ensures the coroutine runs in the same event
-            # loop instead of spawning a blocking thread. This improves speed and
-            # reduces resource usage by leveraging async I/O for both SIP and
-            # WebSocket handling.
-            if OPENAI_MODE == 'realtime':
-                # Start the Realtime agent
-                print("Using OpenAI Realtime API")
-                monitor.add_log("Using OpenAI Realtime API")
-                self.openai_thread = threading.Thread(target=asyncio.run,
-                                                     args=(self.start_openai_agent_realtime(),))
-                self.openai_thread.start()
-            else:
-                # Fallback to legacy speech API
-                print("Using legacy OpenAI Voice API")
-                monitor.add_log("Using legacy OpenAI Voice API")
-                self.openai_thread = threading.Thread(target=asyncio.run,
-                                                     args=(self.start_openai_agent_legacy(),))
-                self.openai_thread.start()
-            
-        elif ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
-            # Call ended
-            print("Call disconnected")
-            monitor.remove_call(f"Call-{self.call_id}")
-            self._invite_retry_timer.cancel()
-            if self.audio_callback:
-                self.audio_callback.wait_for_playback_drain()
-                self.audio_callback.stop()
-            if self.openai_thread and self.openai_thread.is_alive():
-                self.openai_thread.join(timeout=5)
-            status_code = ci.lastStatusCode
-            if (self.target_uri and ci.role == pj.PJSIP_ROLE_UAC and status_code
-                    and 400 <= status_code < 600):
-                self._schedule_invite_retry(status_code)
+                # Create audio callback and connect audio media
+                self.audio_callback = AudioCallback(self)
+                call_slot = self.getAudioMedia(-1)
+                call_slot.startTransmit(self.audio_callback)
+                self.audio_callback.startTransmit(call_slot)
+                monitor.record_audio_event('audio_bridge_connected', call_id=call_id)
+
+                # Launch the appropriate OpenAI agent depending on the selected mode.
+                if OPENAI_MODE == 'realtime':
+                    self._log_event(
+                        "Using OpenAI Realtime API",
+                        event="openai_mode",
+                        mode='realtime',
+                    )
+                    monitor.record_audio_event('openai_mode_realtime', call_id=call_id)
+                    self._start_async_agent(self.start_openai_agent_realtime, 'realtime')
+                else:
+                    self._log_event(
+                        "Using legacy OpenAI Voice API",
+                        event="openai_mode",
+                        mode='legacy',
+                    )
+                    monitor.record_audio_event('openai_mode_legacy', call_id=call_id)
+                    self._start_async_agent(self.start_openai_agent_legacy, 'legacy')
+
+            elif ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+                # Call ended
+                self._log_event(
+                    "Call disconnected",
+                    event="call_disconnected",
+                    disconnect_code=ci.lastStatusCode,
+                )
+                monitor.record_audio_event('call_disconnected', call_id=call_id)
+                monitor.remove_call(call_id)
+                self._invite_retry_timer.cancel()
+                if self.audio_callback:
+                    self.audio_callback.wait_for_playback_drain()
+                    self.audio_callback.stop()
+                if self.openai_thread and self.openai_thread.is_alive():
+                    self.openai_thread.join(timeout=5)
+                status_code = ci.lastStatusCode
+                if (self.target_uri and ci.role == pj.PJSIP_ROLE_UAC and status_code
+                        and 400 <= status_code < 600):
+                    self._schedule_invite_retry(status_code)
 
     def _schedule_invite_retry(self, status_code: int) -> None:
-        if self._invite_attempts >= SIP_INVITE_MAX_ATTEMPTS:
-            monitor.add_log(
-                f"Invite retry limit reached for {self.target_uri} (status {status_code})"
+        with self._correlation_context():
+            if self._invite_attempts >= SIP_INVITE_MAX_ATTEMPTS:
+                self._log_event(
+                    "Invite retry limit reached",
+                    event='invite_retry_limit',
+                    status_code=status_code,
+                    target_uri=self.target_uri,
+                    max_attempts=SIP_INVITE_MAX_ATTEMPTS,
+                )
+                return
+            delay = min(SIP_INVITE_RETRY_BASE * (2 ** self._invite_attempts), SIP_INVITE_RETRY_MAX)
+            self._invite_attempts += 1
+            metrics.record_invite_retry()
+            self._log_event(
+                "Scheduling INVITE retry",
+                event='invite_retry_scheduled',
+                target_uri=self.target_uri,
+                delay_seconds=delay,
+                attempt=self._invite_attempts,
+                status_code=status_code,
             )
-            return
-        delay = min(SIP_INVITE_RETRY_BASE * (2 ** self._invite_attempts), SIP_INVITE_RETRY_MAX)
-        self._invite_attempts += 1
-        monitor.add_log(
-            f"Retrying INVITE to {self.target_uri} in {delay:.1f}s (attempt {self._invite_attempts})"
-        )
-        self._invite_retry_timer.schedule(delay)
+            self._invite_retry_timer.schedule(delay)
 
     def _retry_invite(self) -> None:
         if not self.target_uri:
@@ -395,13 +493,24 @@ class Call(pj.Call):
         if hasattr(call_prm, 'opt'):
             call_prm.opt.audioCount = 1
             call_prm.opt.videoCount = 0
-        try:
-            self.makeCall(self.target_uri, call_prm)
-            monitor.add_log(f"Re-sending INVITE to {self.target_uri}")
-        except Exception as err:
-            monitor.add_log(f"INVITE retry failed: {err}")
-            if self._invite_attempts < SIP_INVITE_MAX_ATTEMPTS:
-                self._schedule_invite_retry(status_code=0)
+        with self._correlation_context():
+            try:
+                self.makeCall(self.target_uri, call_prm)
+                self._log_event(
+                    "Re-sending INVITE",
+                    event='invite_retry_send',
+                    target_uri=self.target_uri,
+                )
+            except Exception as err:
+                self._log_event(
+                    "INVITE retry failed",
+                    level='error',
+                    event='invite_retry_failed',
+                    target_uri=self.target_uri,
+                    error=str(err),
+                )
+                if self._invite_attempts < SIP_INVITE_MAX_ATTEMPTS:
+                    self._schedule_invite_retry(status_code=0)
 
     async def _ws_send(self, payload):
         if not self.ws or self.ws.closed:
@@ -436,19 +545,47 @@ class Call(pj.Call):
         if self._realtime_input_committed or not self.ws or self.ws.closed:
             return
         message = json.dumps({"type": "input_audio_buffer.commit"})
-        try:
-            await self._ws_send(message)
-            self._realtime_input_committed = True
-        except Exception as err:
-            monitor.add_log(f"Error committing realtime audio buffer: {err}")
+        with self._correlation_context():
+            try:
+                await self._ws_send(message)
+                self._realtime_input_committed = True
+                monitor.record_audio_event('realtime_commit', call_id=self.call_label())
+                self._log_event(
+                    "Realtime audio buffer committed",
+                    event='realtime_commit',
+                )
+            except Exception as err:
+                self._log_event(
+                    "Error committing realtime audio buffer",
+                    level='error',
+                    event='realtime_commit_error',
+                    error=str(err),
+                )
 
     async def _close_websocket(self) -> None:
         if not self.ws:
             return
-        with contextlib.suppress(Exception):
-            await self.ws.close(code=1000, reason="call ended")
-            await self.ws.wait_closed()
-        self.ws = None
+        call_id = self.call_label()
+        with self._correlation_context():
+            try:
+                await self.ws.close(code=1000, reason="call ended")
+                await self.ws.wait_closed()
+                monitor.record_audio_event('openai_ws_closed', call_id=call_id)
+                monitor.update_realtime_ws(True, 'connection closed', call_id=call_id)
+                self._log_event(
+                    "Realtime WebSocket closed",
+                    event='realtime_ws_closed',
+                )
+            except Exception as err:
+                self._log_event(
+                    "Error closing OpenAI WebSocket",
+                    level='error',
+                    event='realtime_ws_close_error',
+                    error=str(err),
+                )
+                monitor.update_realtime_ws(False, f'close error: {err}', call_id=call_id)
+            finally:
+                self.ws = None
             
     async def start_openai_agent_legacy(self):
         """
@@ -460,37 +597,65 @@ class Call(pj.Call):
         available. See OpenAI's voice documentation for details on the
         parameters used here【214777425731610†L286-L314】.
         """
+        call_id = self.call_label()
         ws_url = "wss://api.openai.com/v1/audio/speech"
         headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "Content-Type": "application/json"
         }
-        async with websockets.connect(ws_url, extra_headers=headers) as ws:
-            self.ws = ws
-            # Send initial configuration
-            await self.ws.send(json.dumps({
-                "agent_id": AGENT_ID,
-                "sample_rate": SAMPLE_RATE,
-                "encoding": "linear16",
-                "audio_channels": CHANNELS
-            }))
-            # Start audio processing tasks concurrently
-            send_task = asyncio.create_task(self.send_audio_to_openai_legacy())
-            recv_task = asyncio.create_task(self.receive_audio_from_openai_legacy())
+        with self._correlation_context():
+            monitor.record_audio_event('legacy_ws_connecting', call_id=call_id)
+            self._log_event(
+                "Connecting to legacy OpenAI voice API",
+                event='openai_ws_connecting',
+                mode='legacy',
+            )
+        try:
+            async with websockets.connect(ws_url, extra_headers=headers) as ws:
+                self.ws = ws
+                with self._correlation_context():
+                    monitor.update_realtime_ws(True, 'legacy connected', call_id=call_id)
+                    monitor.record_audio_event('legacy_ws_connected', call_id=call_id)
+                    self._log_event(
+                        "Connected to legacy OpenAI voice API",
+                        event='openai_ws_connected',
+                        mode='legacy',
+                    )
+                # Send initial configuration
+                await self.ws.send(json.dumps({
+                    "agent_id": AGENT_ID,
+                    "sample_rate": SAMPLE_RATE,
+                    "encoding": "linear16",
+                    "audio_channels": CHANNELS
+                }))
+                # Start audio processing tasks concurrently
+                send_task = asyncio.create_task(self.send_audio_to_openai_legacy())
+                recv_task = asyncio.create_task(self.receive_audio_from_openai_legacy())
 
-            def _cancel_sender(_):
-                if not send_task.done():
-                    send_task.cancel()
+                def _cancel_sender(_):
+                    if not send_task.done():
+                        send_task.cancel()
 
-            recv_task.add_done_callback(_cancel_sender)
+                recv_task.add_done_callback(_cancel_sender)
 
-            try:
-                await send_task
-            except asyncio.CancelledError:
-                pass
-            await self._close_websocket()
-            with contextlib.suppress(asyncio.CancelledError):
-                await recv_task
+                try:
+                    await send_task
+                except asyncio.CancelledError:
+                    pass
+                await self._close_websocket()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await recv_task
+        except Exception as err:
+            with self._correlation_context():
+                monitor.update_realtime_ws(False, f'legacy connect error: {err}', call_id=call_id)
+                self._log_event(
+                    "Legacy OpenAI connection failed",
+                    level='error',
+                    event='openai_ws_error',
+                    mode='legacy',
+                    error=str(err),
+                )
+            raise
 
     async def start_openai_agent_realtime(self):
         """
@@ -516,56 +681,77 @@ class Call(pj.Call):
             # completeness. Remove or adjust once API stabilises.
             "OpenAI-Beta": "realtime=v1"
         }
-        async with websockets.connect(ws_url, extra_headers=headers) as ws:
-            self.ws = ws
-            self._realtime_input_committed = False
-            # Build and send session.update message specifying audio formats
-            # and system instructions. The audio formats must match the
-            # inbound call. We use 16 kHz, 16‑bit PCM little endian audio (pcm16).
-            session_update = {
-                "type": "session.update",
-                "session": {
-                    "type": "realtime",
-                    "model": OPENAI_MODEL,
-                    "output_modalities": ["audio"],
-                    "audio": {
-                        "input": {
-                            "format": {"type": "audio/pcm16", "sample_rate": SAMPLE_RATE},
-                            # Enable server‑side VAD to allow the API to handle turn taking
-                            "turn_detection": {"type": "server_vad"}
+        call_id = self.call_label()
+        with self._correlation_context():
+            monitor.record_audio_event('realtime_ws_connecting', call_id=call_id)
+            self._log_event(
+                "Connecting to realtime OpenAI voice API",
+                event='openai_ws_connecting',
+                mode='realtime',
+            )
+        try:
+            async with websockets.connect(ws_url, extra_headers=headers) as ws:
+                self.ws = ws
+                self._realtime_input_committed = False
+                with self._correlation_context():
+                    monitor.update_realtime_ws(True, 'realtime connected', call_id=call_id)
+                    monitor.record_audio_event('realtime_ws_connected', call_id=call_id)
+                    self._log_event(
+                        "Connected to realtime OpenAI voice API",
+                        event='openai_ws_connected',
+                        mode='realtime',
+                    )
+                # Build and send session.update message specifying audio formats
+                session_update = {
+                    "type": "session.update",
+                    "session": {
+                        "type": "realtime",
+                        "model": OPENAI_MODEL,
+                        "output_modalities": ["audio"],
+                        "audio": {
+                            "input": {
+                                "format": {"type": "audio/pcm16", "sample_rate": SAMPLE_RATE},
+                                "turn_detection": {"type": "server_vad"}
+                            },
+                            "output": {
+                                "format": {"type": "audio/pcm16", "sample_rate": SAMPLE_RATE}
+                            }
                         },
-                        "output": {
-                            "format": {"type": "audio/pcm16", "sample_rate": SAMPLE_RATE}
-                        }
-                    },
-                    "instructions": SYSTEM_PROMPT
+                        "instructions": SYSTEM_PROMPT
+                    }
                 }
-            }
-            await self.ws.send(json.dumps(session_update))
+                await self.ws.send(json.dumps(session_update))
 
-            # Optionally send an initial conversation item so that the model
-            # greets the caller. This can be controlled via an environment
-            # variable or by modifying SYSTEM_PROMPT. Disabled by default.
+                # Start concurrent audio sending/receiving tasks
+                send_task = asyncio.create_task(self.send_audio_to_openai_realtime())
+                recv_task = asyncio.create_task(self.receive_audio_from_openai_realtime())
 
-            # Start concurrent audio sending/receiving tasks
-            send_task = asyncio.create_task(self.send_audio_to_openai_realtime())
-            recv_task = asyncio.create_task(self.receive_audio_from_openai_realtime())
+                def _cancel_sender(_):
+                    if not send_task.done():
+                        send_task.cancel()
 
-            def _cancel_sender(_):
-                if not send_task.done():
-                    send_task.cancel()
+                recv_task.add_done_callback(_cancel_sender)
 
-            recv_task.add_done_callback(_cancel_sender)
-
-            try:
-                await send_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                await self._send_realtime_commit()
-            await self._close_websocket()
-            with contextlib.suppress(asyncio.CancelledError):
-                await recv_task
+                try:
+                    await send_task
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    await self._send_realtime_commit()
+                await self._close_websocket()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await recv_task
+        except Exception as err:
+            with self._correlation_context():
+                monitor.update_realtime_ws(False, f'realtime connect error: {err}', call_id=call_id)
+                self._log_event(
+                    "Realtime OpenAI connection failed",
+                    level='error',
+                    event='openai_ws_error',
+                    mode='realtime',
+                    error=str(err),
+                )
+            raise
 
     async def send_audio_to_openai_legacy(self):
         """
@@ -576,6 +762,14 @@ class Call(pj.Call):
         """
         if not self.audio_callback:
             return
+        call_id = self.call_label()
+        with self._correlation_context():
+            monitor.record_audio_event('legacy_stream_started', call_id=call_id)
+            self._log_event(
+                "Starting legacy audio stream",
+                event='audio_stream_start',
+                mode='legacy',
+            )
         try:
             while self.audio_callback.is_active:
                 audio_chunk = await self.audio_callback.get_capture_frame()
@@ -587,13 +781,26 @@ class Call(pj.Call):
                     await self._ws_send(audio_chunk)
                     tokens_estimate = len(audio_chunk) // 1000
                     if tokens_estimate > 0:
-                        monitor.update_tokens(tokens_estimate)
+                        monitor.update_tokens(tokens_estimate, call_id=call_id)
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            error_msg = f"Error sending audio to OpenAI: {e}"
-            print(error_msg)
-            monitor.add_log(error_msg)
+            with self._correlation_context():
+                self._log_event(
+                    "Error sending audio to OpenAI",
+                    level='error',
+                    event='audio_stream_error',
+                    mode='legacy',
+                    error=str(e),
+                )
+        finally:
+            with self._correlation_context():
+                monitor.record_audio_event('legacy_stream_stopped', call_id=call_id)
+                self._log_event(
+                    "Legacy audio stream stopped",
+                    event='audio_stream_stop',
+                    mode='legacy',
+                )
 
     async def send_audio_to_openai_realtime(self):
         """
@@ -604,6 +811,14 @@ class Call(pj.Call):
         """
         if not self.audio_callback:
             return
+        call_id = self.call_label()
+        with self._correlation_context():
+            monitor.record_audio_event('realtime_stream_started', call_id=call_id)
+            self._log_event(
+                "Starting realtime audio stream",
+                event='audio_stream_start',
+                mode='realtime',
+            )
         try:
             while self.audio_callback.is_active:
                 audio_chunk = await self.audio_callback.get_capture_frame()
@@ -617,13 +832,26 @@ class Call(pj.Call):
                     await self._ws_send(json.dumps(message))
                     tokens_estimate = len(audio_chunk) // 1000
                     if tokens_estimate > 0:
-                        monitor.update_tokens(tokens_estimate)
+                        monitor.update_tokens(tokens_estimate, call_id=call_id)
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            error_msg = f"Error sending audio to OpenAI (Realtime): {e}"
-            print(error_msg)
-            monitor.add_log(error_msg)
+            with self._correlation_context():
+                self._log_event(
+                    "Error sending audio to OpenAI (Realtime)",
+                    level='error',
+                    event='audio_stream_error',
+                    mode='realtime',
+                    error=str(e),
+                )
+        finally:
+            with self._correlation_context():
+                monitor.record_audio_event('realtime_stream_stopped', call_id=call_id)
+                self._log_event(
+                    "Realtime audio stream stopped",
+                    event='audio_stream_stop',
+                    mode='realtime',
+                )
 
     async def receive_audio_from_openai_legacy(self):
         """
@@ -634,6 +862,14 @@ class Call(pj.Call):
         """
         if not self.audio_callback:
             return
+        call_id = self.call_label()
+        with self._correlation_context():
+            monitor.record_audio_event('legacy_receive_started', call_id=call_id)
+            self._log_event(
+                "Starting legacy audio receive loop",
+                event='audio_receive_start',
+                mode='legacy',
+            )
         try:
             while self.ws and not self.ws.closed:
                 response = await self.ws.recv()
@@ -642,12 +878,24 @@ class Call(pj.Call):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            error_msg = f"Error receiving audio from OpenAI: {e}"
-            print(error_msg)
-            monitor.add_log(error_msg)
+            with self._correlation_context():
+                self._log_event(
+                    "Error receiving audio from OpenAI",
+                    level='error',
+                    event='audio_receive_error',
+                    mode='legacy',
+                    error=str(e),
+                )
         finally:
             if self.audio_callback:
                 await self.audio_callback.flush_playback()
+            with self._correlation_context():
+                monitor.record_audio_event('legacy_receive_stopped', call_id=call_id)
+                self._log_event(
+                    "Legacy audio receive loop stopped",
+                    event='audio_receive_stop',
+                    mode='legacy',
+                )
 
     async def receive_audio_from_openai_realtime(self):
         """
@@ -661,6 +909,14 @@ class Call(pj.Call):
         """
         if not self.audio_callback:
             return
+        call_id = self.call_label()
+        with self._correlation_context():
+            monitor.record_audio_event('realtime_receive_started', call_id=call_id)
+            self._log_event(
+                "Starting realtime audio receive loop",
+                event='audio_receive_start',
+                mode='realtime',
+            )
         try:
             while self.ws and not self.ws.closed:
                 raw_msg = await self.ws.recv()
@@ -676,16 +932,37 @@ class Call(pj.Call):
                         audio_bytes = base64.b64decode(message['delta'])
                         await self.audio_callback.queue_playback_frame(audio_bytes)
                     except Exception as decode_err:
-                        monitor.add_log(f"Error decoding audio delta: {decode_err}")
+                        with self._correlation_context():
+                            self._log_event(
+                                "Error decoding realtime audio delta",
+                                level='error',
+                                event='audio_receive_decode_error',
+                                mode='realtime',
+                                error=str(decode_err),
+                            )
+                elif msg_type == 'response.completed':
+                    await self._send_realtime_commit()
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            error_msg = f"Error receiving audio from OpenAI (Realtime): {e}"
-            print(error_msg)
-            monitor.add_log(error_msg)
+            with self._correlation_context():
+                self._log_event(
+                    "Error receiving audio from OpenAI (Realtime)",
+                    level='error',
+                    event='audio_receive_error',
+                    mode='realtime',
+                    error=str(e),
+                )
         finally:
             if self.audio_callback:
                 await self.audio_callback.flush_playback()
+            with self._correlation_context():
+                monitor.record_audio_event('realtime_receive_stopped', call_id=call_id)
+                self._log_event(
+                    "Realtime audio receive loop stopped",
+                    event='audio_receive_stop',
+                    mode='realtime',
+                )
 
 # Account class for SIP registration
 class Account(pj.Account):
@@ -697,8 +974,12 @@ class Account(pj.Account):
 
     def onRegState(self, prm):
         ai = self.getInfo()
-        print(f"Registration state: {ai.regStatusText} ({ai.regStatus})")
-        # Update monitor with registration status
+        monitor.add_log(
+            "Registration state updated",
+            event='sip_registration_state',
+            status_text=ai.regStatusText,
+            status_code=ai.regStatus,
+        )
         monitor.update_registration(ai.regStatus == 200)
         if ai.regStatus == 200:
             self._reg_retry_attempts = 0
@@ -707,16 +988,34 @@ class Account(pj.Account):
             self._schedule_registration_retry(ai.regStatus)
 
     def onIncomingCall(self, prm):
-        print("Incoming call...")
         call = Call(self, prm.callId)
+        call_id = call.call_label()
+        correlation_id = monitor.add_call(call_id, correlation_id=call.correlation_id)
+        call.correlation_id = correlation_id
+        with correlation_scope(correlation_id):
+            monitor.record_audio_event('incoming_call', call_id=call_id)
+            monitor.add_log(
+                "Incoming call",
+                event='incoming_call',
+                call_id=call_id,
+            )
         call_prm = pj.CallOpParam()
         call_prm.statusCode = 200  # OK
         call.answer(call_prm)
-        # Add call to monitor
-        monitor.add_call(f"Call-{prm.callId}")
 
     def make_outgoing_call(self, uri: str) -> Call:
         call = Call(self, target_uri=uri)
+        call.monitor_call_id = f"Outbound-{int(time.time() * 1000)}"
+        correlation_id = monitor.add_call(call.monitor_call_id, correlation_id=call.correlation_id)
+        call.correlation_id = correlation_id
+        with correlation_scope(correlation_id):
+            monitor.record_audio_event('outgoing_call', call_id=call.monitor_call_id)
+            monitor.add_log(
+                "Placing outgoing call",
+                event='outgoing_call',
+                call_id=call.monitor_call_id,
+                target_uri=uri,
+            )
         call_prm = pj.CallOpParam()
         if hasattr(call_prm, 'opt'):
             call_prm.opt.audioCount = 1
@@ -727,29 +1026,47 @@ class Account(pj.Account):
     def _schedule_registration_retry(self, status_code: int) -> None:
         delay = min(SIP_REG_RETRY_BASE * (2 ** self._reg_retry_attempts), SIP_REG_RETRY_MAX)
         self._reg_retry_attempts += 1
+        metrics.record_register_retry()
         monitor.add_log(
-            f"Scheduling SIP registration retry in {delay:.1f}s after failure {status_code}"
+            "Scheduling SIP registration retry",
+            event='registration_retry_scheduled',
+            delay_seconds=delay,
+            attempt=self._reg_retry_attempts,
+            status_code=status_code,
         )
         self._reg_retry_timer.schedule(delay)
 
     def _retry_registration(self) -> None:
         try:
-            monitor.add_log("Retrying SIP registration")
+            monitor.add_log(
+                "Retrying SIP registration",
+                event='registration_retry_send',
+                attempt=self._reg_retry_attempts,
+            )
             self.setRegistration(True)
         except Exception as err:
-            monitor.add_log(f"Registration retry failed: {err}")
+            monitor.add_log(
+                "Registration retry failed",
+                level='error',
+                event='registration_retry_failed',
+                error=str(err),
+            )
             self._schedule_registration_retry(status_code=0)
 
 # Main function
 def main():
     # Start monitoring server
     monitor.start()
-    
+    logger.info("SIP AI agent starting", extra={"event": "agent_start"})
+
     # Check environment variables
     if not all([SIP_DOMAIN, SIP_USER, SIP_PASS, OPENAI_API_KEY, AGENT_ID]):
         error_msg = "Error: Missing environment variables. Please check your .env file."
-        print(error_msg)
-        monitor.add_log(error_msg)
+        monitor.add_log(
+            error_msg,
+            level='error',
+            event='configuration_error',
+        )
         sys.exit(1)
         
     # Create and initialize PJSIP library
@@ -840,19 +1157,25 @@ def main():
     acc = Account(ep)
     acc.create(acc_cfg)
     
-    print(f"SIP client registered as {SIP_USER}@{SIP_DOMAIN}")
-    print("Waiting for incoming calls...")
+    monitor.add_log(
+        "SIP client registered",
+        event='sip_registration_complete',
+        sip_user=SIP_USER,
+        sip_domain=SIP_DOMAIN,
+    )
+    monitor.add_log("Waiting for incoming calls...", event='agent_idle')
     
     # Keep the program running
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Exiting...")
+        monitor.add_log("Exiting on keyboard interrupt", event='agent_shutdown')
     finally:
         # Shutdown
         ep.libDestroy()
         ep.libDelete()
+        monitor.add_log("PJSIP shutdown complete", event='agent_shutdown_complete')
 
 if __name__ == "__main__":
     main()

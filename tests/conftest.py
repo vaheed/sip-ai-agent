@@ -199,7 +199,7 @@ class _FakeMonitor:
     def __init__(self):
         self.logs = []
 
-    def add_log(self, message):  # pragma: no cover - stub
+    def add_log(self, message, *args, **kwargs):  # pragma: no cover - stub
         self.logs.append(message)
 
     def remove_call(self, *args, **kwargs):  # pragma: no cover - stub
@@ -209,6 +209,12 @@ class _FakeMonitor:
         pass
 
     def update_registration(self, *args, **kwargs):  # pragma: no cover - stub
+        pass
+
+    def record_audio_event(self, *args, **kwargs):  # pragma: no cover - stub
+        pass
+
+    def update_realtime_ws(self, *args, **kwargs):  # pragma: no cover - stub
         pass
 
     def start(self):  # pragma: no cover - stub

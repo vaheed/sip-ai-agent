@@ -1,8 +1,26 @@
 #!/usr/bin/env python3
+import json
 import os
 import time
 import threading
+from typing import Dict, Optional
+
 from flask import Flask, jsonify, render_template_string, request
+
+try:
+    from .observability import (
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
+except ImportError:  # pragma: no cover - script execution fallback
+    from observability import (  # type: ignore
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
 
 def _env_path():
     """
@@ -95,12 +113,17 @@ class Monitor:
 
     def __init__(self):
         self.app = Flask(__name__)
+        self.logger = get_logger(__name__)
         self.sip_registered = False
         self.active_calls = []
         self.call_history = []  # list of dicts with call_id, start, end
         self.api_tokens_used = 0
         self.logs = []
         self.max_logs = 100
+        self._call_context: Dict[str, Dict[str, object]] = {}
+        self.realtime_ws_state: str = "unknown"
+        self.realtime_ws_detail: Optional[str] = None
+        self.realtime_ws_last_event: Optional[float] = None
         self.setup_routes()
         
     def setup_routes(self):
@@ -317,55 +340,170 @@ class Monitor:
             return jsonify({
                 'sip_registered': self.sip_registered,
                 'active_calls': self.active_calls,
-                'api_tokens_used': self.api_tokens_used
+                'api_tokens_used': self.api_tokens_used,
+                'realtime_ws_state': self.realtime_ws_state,
+                'realtime_ws_detail': self.realtime_ws_detail,
             })
-        
+
         @self.app.route('/api/logs')
         def api_logs():
             return jsonify({
                 'logs': self.logs
             })
+
+        @self.app.route('/metrics')
+        def api_metrics():
+            return jsonify(metrics.snapshot())
+
+        @self.app.route('/healthz')
+        def healthz():
+            status = self.health_status()
+            code = 200 if status['status'] == 'ok' else 503
+            return jsonify(status), code
     
     def update_registration(self, status):
-        self.sip_registered = status
-        self.add_log(f"SIP Registration: {'Registered' if status else 'Not Registered'}")
-    
-    def add_call(self, call_id):
-        if call_id not in self.active_calls:
-            self.active_calls.append(call_id)
-            # Record call start time
-            self.call_history.append({'call_id': call_id, 'start': time.time(), 'end': None})
-            self.add_log(f"New call: {call_id}")
-    
-    def remove_call(self, call_id):
-        if call_id in self.active_calls:
-            self.active_calls.remove(call_id)
-            # Record call end time
-            for item in self.call_history:
+        self.sip_registered = bool(status)
+        event = 'Registered' if self.sip_registered else 'Not Registered'
+        self.add_log(
+            f"SIP registration state changed: {event}",
+            event="sip_registration",
+            registered=self.sip_registered,
+        )
+
+    def add_call(self, call_id: str, correlation_id: Optional[str] = None) -> str:
+        correlation_id = correlation_id or generate_correlation_id()
+        with correlation_scope(correlation_id):
+            if call_id not in self.active_calls:
+                self.active_calls.append(call_id)
+            start_ts = time.time()
+            self._call_context[call_id] = {
+                "correlation_id": correlation_id,
+                "start": start_ts,
+            }
+            self.call_history.append({
+                'call_id': call_id,
+                'start': start_ts,
+                'end': None,
+                'correlation_id': correlation_id,
+            })
+            metrics.call_started(call_id, correlation_id)
+            self.add_log(
+                f"New call: {call_id}",
+                event="call_started",
+                call_id=call_id,
+            )
+        return correlation_id
+
+    def remove_call(self, call_id: str) -> None:
+        context = self._call_context.get(call_id, {})
+        correlation_id = context.get("correlation_id")
+        with correlation_scope(correlation_id):
+            if call_id in self.active_calls:
+                self.active_calls.remove(call_id)
+
+            duration = None
+            for item in reversed(self.call_history):
                 if item['call_id'] == call_id and item['end'] is None:
                     item['end'] = time.time()
+                    duration = item['end'] - item['start']
                     break
-            self.add_log(f"Call ended: {call_id}")
-    
-    def update_tokens(self, tokens):
-        self.api_tokens_used += tokens
-        self.add_log(f"API tokens used: +{tokens} (Total: {self.api_tokens_used})")
-    
-    def add_log(self, message):
+
+            metrics_duration = metrics.call_ended(call_id)
+            if duration is None:
+                duration = metrics_duration
+
+            if call_id in self._call_context:
+                self._call_context.pop(call_id, None)
+
+            log_fields = {'event': 'call_ended', 'call_id': call_id}
+            if duration is not None:
+                log_fields['duration_seconds'] = duration
+            self.add_log(f"Call ended: {call_id}", **log_fields)
+
+    def update_tokens(self, tokens: int, call_id: Optional[str] = None) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = context.get('correlation_id') if context else None
+        with correlation_scope(correlation_id):
+            self.api_tokens_used += tokens
+            metrics.record_token_usage(tokens)
+            log_fields = {
+                'event': 'token_usage',
+                'tokens': tokens,
+                'total_tokens': self.api_tokens_used,
+            }
+            if call_id:
+                log_fields['call_id'] = call_id
+            self.add_log(
+                f"API tokens used: +{tokens} (Total: {self.api_tokens_used})",
+                **log_fields,
+            )
+
+    def update_realtime_ws(self, healthy: bool, detail: Optional[str] = None, call_id: Optional[str] = None) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = context.get('correlation_id') if context else None
+        with correlation_scope(correlation_id):
+            self.realtime_ws_state = 'healthy' if healthy else 'unhealthy'
+            self.realtime_ws_detail = detail
+            self.realtime_ws_last_event = time.time()
+            metrics.record_audio_event('realtime_ws_healthy' if healthy else 'realtime_ws_unhealthy')
+            log_fields = {
+                'event': 'realtime_ws',
+                'healthy': healthy,
+            }
+            if call_id:
+                log_fields['call_id'] = call_id
+            if detail:
+                log_fields['detail'] = detail
+            self.add_log('Realtime WebSocket status updated', **log_fields)
+
+    def record_audio_event(self, name: str, call_id: Optional[str] = None, **fields) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = context.get('correlation_id') if context else None
+        with correlation_scope(correlation_id):
+            metrics.record_audio_event(name)
+            log_fields = {
+                'event': 'audio_pipeline',
+                'audio_event': name,
+            }
+            if call_id:
+                log_fields['call_id'] = call_id
+            log_fields.update(fields)
+            self.add_log(f"Audio pipeline event: {name}", **log_fields)
+
+    def add_log(self, message, level: str = 'info', **fields):
+        log_method = getattr(self.logger, level, self.logger.info)
+        log_method(message, extra=fields)
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}] {message}"
+        level_upper = level.upper()
+        log_entry = f"[{timestamp}] [{level_upper}] {message}"
+        if fields:
+            try:
+                context_json = json.dumps(fields, default=str, sort_keys=True)
+            except TypeError:
+                context_json = json.dumps({k: str(v) for k, v in fields.items()}, sort_keys=True)
+            log_entry = f"{log_entry} {context_json}"
         self.logs.append(log_entry)
-        print(log_entry)  # Also print to console
-        
+
         # Keep logs at a reasonable size
         if len(self.logs) > self.max_logs:
             self.logs = self.logs[-self.max_logs:]
-    
+
+    def health_status(self) -> Dict[str, Optional[object]]:
+        healthy = self.sip_registered and self.realtime_ws_state != 'unhealthy'
+        return {
+            'status': 'ok' if healthy else 'degraded',
+            'sip_registered': self.sip_registered,
+            'realtime_ws_state': self.realtime_ws_state,
+            'realtime_ws_detail': self.realtime_ws_detail,
+            'active_calls': len(self.active_calls),
+            'last_ws_event_ts': self.realtime_ws_last_event,
+        }
+
     def start(self):
         # Start Flask in a separate thread
         threading.Thread(target=self._run_server, daemon=True).start()
-        self.add_log("Monitoring server started on port 8080")
-    
+        self.add_log("Monitoring server started on port 8080", event="monitor_started")
+
     def _run_server(self):
         # Explicitly disable Flask's logging to keep console output clean
         import logging as _logging
