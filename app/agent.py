@@ -5,14 +5,11 @@ import time
 import json
 import asyncio
 import websockets
-import wave
 import threading
 import base64
+import queue
+import contextlib
 from typing import Optional, Sequence
-
-import pyaudio
-from pydub import AudioSegment
-from pydub.playback import play
 from dotenv import load_dotenv
 from openai import OpenAI
 import pjsua2 as pj
@@ -65,6 +62,9 @@ SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT', 'You are a helpful voice assistant.')
 SAMPLE_RATE = 16000
 CHANNELS = 1
 FRAME_DURATION = 20  # ms
+PCM_WIDTH = 2  # 16-bit PCM
+FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
+MAX_PENDING_FRAMES = 50
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -178,23 +178,135 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Audio callback class for PJSIP
 class AudioCallback(pj.AudioMedia):
+    """Bidirectional PCM media adapter between PJSIP and asyncio code."""
+
     def __init__(self, call):
-        pj.AudioMedia.__init__(self)
+        super().__init__()
         self.call = call
-        self.audio_queue = asyncio.Queue()
         self.is_active = True
-        
-    def onFrameRequested(self, frame):
-        # This method is called when PJSIP needs audio frames
+        self.capture_queue: queue.Queue[bytes] = queue.Queue(maxsize=MAX_PENDING_FRAMES)
+        self.playback_queue: queue.Queue[bytes] = queue.Queue(maxsize=MAX_PENDING_FRAMES)
+        self._capture_buffer = bytearray()
+        self._playback_buffer = bytearray()
+        self._stop_event = threading.Event()
+
+    # --- Internal helpers -------------------------------------------------
+
+    def _blocking_put(self, target_queue: queue.Queue, data: bytes) -> None:
+        """Put ``data`` into ``target_queue`` applying backpressure."""
+        while self.is_active:
+            try:
+                target_queue.put(data, timeout=0.1)
+                return
+            except queue.Full:
+                if self._stop_event.is_set():
+                    break
+        with contextlib.suppress(queue.Full):
+            target_queue.put_nowait(data)
+
+    def _normalize_chunk(self, data: bytes) -> bytes:
+        if not data:
+            return b"\x00" * FRAME_BYTES
+        if len(data) < FRAME_BYTES:
+            return data + b"\x00" * (FRAME_BYTES - len(data))
+        if len(data) > FRAME_BYTES:
+            return data[:FRAME_BYTES]
+        return data
+
+    # --- Capture path -----------------------------------------------------
+
+    def putFrame(self, frame):  # pragma: no cover - invoked by PJSIP runtime
+        if not self.is_active or frame is None:
+            return
+        if getattr(frame, 'type', None) != pj.PJMEDIA_FRAME_TYPE_AUDIO:
+            return
+        data = bytes(getattr(frame, 'buf', b''))
+        if not data:
+            return
+        self._capture_buffer.extend(data)
+        while len(self._capture_buffer) >= FRAME_BYTES:
+            chunk = bytes(self._capture_buffer[:FRAME_BYTES])
+            del self._capture_buffer[:FRAME_BYTES]
+            self._blocking_put(self.capture_queue, chunk)
+
+    async def get_capture_frame(self) -> bytes:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._capture_queue_get)
+
+    def _capture_queue_get(self) -> bytes:
+        while self.is_active or not self.capture_queue.empty():
+            try:
+                data = self.capture_queue.get(timeout=0.1)
+                self.capture_queue.task_done()
+                return data
+            except queue.Empty:
+                if not self.is_active:
+                    break
+        return b''
+
+    # --- Playback path ----------------------------------------------------
+
+    async def queue_playback_frame(self, data: bytes) -> None:
+        if not data:
+            return
+        self._playback_buffer.extend(data)
+        loop = asyncio.get_running_loop()
+        while len(self._playback_buffer) >= FRAME_BYTES:
+            chunk = bytes(self._playback_buffer[:FRAME_BYTES])
+            del self._playback_buffer[:FRAME_BYTES]
+            await loop.run_in_executor(None, self._blocking_put, self.playback_queue, chunk)
+
+    async def flush_playback(self) -> None:
+        if not self._playback_buffer:
+            return
+        loop = asyncio.get_running_loop()
+        data = self._normalize_chunk(bytes(self._playback_buffer))
+        self._playback_buffer.clear()
+        await loop.run_in_executor(None, self._blocking_put, self.playback_queue, data)
+
+    def _flush_playback_sync(self) -> None:
+        if self._playback_buffer:
+            data = self._normalize_chunk(bytes(self._playback_buffer))
+            self._playback_buffer.clear()
+            self._blocking_put(self.playback_queue, data)
+
+    def onFrameRequested(self, frame):  # pragma: no cover - invoked by PJSIP runtime
+        if frame is None:
+            return
+        if not self.is_active:
+            frame.type = pj.PJMEDIA_FRAME_TYPE_NONE
+            frame.buf = b''
+            frame.size = 0
+            return
+        try:
+            chunk = self.playback_queue.get(timeout=FRAME_DURATION / 1000)
+            self.playback_queue.task_done()
+        except queue.Empty:
+            chunk = b''
+        if not chunk and self._playback_buffer:
+            chunk = self._normalize_chunk(bytes(self._playback_buffer))
+            self._playback_buffer.clear()
+        frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
+        normalized = self._normalize_chunk(chunk)
+        frame.buf = normalized
+        frame.size = len(normalized)
+
+    def wait_for_playback_drain(self, timeout: float = 1.0) -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.playback_queue.empty() and not self._playback_buffer:
+                return
+            time.sleep(0.01)
+
+    def stop(self):
         if not self.is_active:
             return
-            
-        # Get audio from the call and put it in the queue
-        if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO:
-            self.audio_queue.put_nowait(frame.buf)
-            
-    def stop(self):
+        self._flush_playback_sync()
         self.is_active = False
+        self._stop_event.set()
+        for q in (self.capture_queue, self.playback_queue):
+            with contextlib.suppress(queue.Full):
+                q.put_nowait(b'')
 
 # Call class for handling SIP calls
 class Call(pj.Call):
@@ -208,7 +320,8 @@ class Call(pj.Call):
         self.target_uri = target_uri
         self._invite_attempts = 0
         self._invite_retry_timer = EndpointTimer(self.acc.ep, self._retry_invite)
-        
+        self._realtime_input_committed = False
+
     def onCallState(self, prm):
         ci = self.getInfo()
         print(f"Call state: {ci.stateText}")
@@ -225,6 +338,7 @@ class Call(pj.Call):
             self.audio_callback = AudioCallback(self)
             call_slot = self.getAudioMedia(-1)
             call_slot.startTransmit(self.audio_callback)
+            self.audio_callback.startTransmit(call_slot)
 
             # Launch the appropriate OpenAI agent depending on the selected mode.
             # Using asyncio.create_task ensures the coroutine runs in the same event
@@ -252,9 +366,10 @@ class Call(pj.Call):
             monitor.remove_call(f"Call-{self.call_id}")
             self._invite_retry_timer.cancel()
             if self.audio_callback:
+                self.audio_callback.wait_for_playback_drain()
                 self.audio_callback.stop()
-            if self.ws and not self.ws.closed:
-                asyncio.run(self.ws.close())
+            if self.openai_thread and self.openai_thread.is_alive():
+                self.openai_thread.join(timeout=5)
             status_code = ci.lastStatusCode
             if (self.target_uri and ci.role == pj.PJSIP_ROLE_UAC and status_code
                     and 400 <= status_code < 600):
@@ -287,6 +402,53 @@ class Call(pj.Call):
             monitor.add_log(f"INVITE retry failed: {err}")
             if self._invite_attempts < SIP_INVITE_MAX_ATTEMPTS:
                 self._schedule_invite_retry(status_code=0)
+
+    async def _ws_send(self, payload):
+        if not self.ws or self.ws.closed:
+            return
+        await self.ws.send(payload)
+        await self._ws_drain()
+
+    async def _ws_drain(self) -> None:
+        if not self.ws:
+            return
+        # websockets>=11 returns a protocol object with a writer implementing drain.
+        transport = getattr(self.ws, 'transport', None)
+        if transport is None or transport.is_closing():
+            return
+        # websockets.legacy.client.WebSocketClientProtocol exposes ``connection``
+        # containing the underlying StreamWriter.
+        candidates = [
+            getattr(self.ws, 'drain', None),
+            getattr(getattr(self.ws, 'connection', None), 'drain', None),
+            getattr(getattr(getattr(self.ws, 'connection', None), 'writer', None), 'drain', None),
+            getattr(getattr(getattr(self.ws, 'connection', None), '_writer', None), 'drain', None),
+        ]
+        for maybe_drain in candidates:
+            if callable(maybe_drain):
+                result = maybe_drain()
+                if asyncio.iscoroutine(result):
+                    with contextlib.suppress(Exception):
+                        await result
+                break
+
+    async def _send_realtime_commit(self) -> None:
+        if self._realtime_input_committed or not self.ws or self.ws.closed:
+            return
+        message = json.dumps({"type": "input_audio_buffer.commit"})
+        try:
+            await self._ws_send(message)
+            self._realtime_input_committed = True
+        except Exception as err:
+            monitor.add_log(f"Error committing realtime audio buffer: {err}")
+
+    async def _close_websocket(self) -> None:
+        if not self.ws:
+            return
+        with contextlib.suppress(Exception):
+            await self.ws.close(code=1000, reason="call ended")
+            await self.ws.wait_closed()
+        self.ws = None
             
     async def start_openai_agent_legacy(self):
         """
@@ -303,7 +465,8 @@ class Call(pj.Call):
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "Content-Type": "application/json"
         }
-        async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+        async with websockets.connect(ws_url, extra_headers=headers) as ws:
+            self.ws = ws
             # Send initial configuration
             await self.ws.send(json.dumps({
                 "agent_id": AGENT_ID,
@@ -312,10 +475,22 @@ class Call(pj.Call):
                 "audio_channels": CHANNELS
             }))
             # Start audio processing tasks concurrently
-            await asyncio.gather(
-                self.send_audio_to_openai_legacy(),
-                self.receive_audio_from_openai_legacy()
-            )
+            send_task = asyncio.create_task(self.send_audio_to_openai_legacy())
+            recv_task = asyncio.create_task(self.receive_audio_from_openai_legacy())
+
+            def _cancel_sender(_):
+                if not send_task.done():
+                    send_task.cancel()
+
+            recv_task.add_done_callback(_cancel_sender)
+
+            try:
+                await send_task
+            except asyncio.CancelledError:
+                pass
+            await self._close_websocket()
+            with contextlib.suppress(asyncio.CancelledError):
+                await recv_task
 
     async def start_openai_agent_realtime(self):
         """
@@ -341,7 +516,9 @@ class Call(pj.Call):
             # completeness. Remove or adjust once API stabilises.
             "OpenAI-Beta": "realtime=v1"
         }
-        async with websockets.connect(ws_url, extra_headers=headers) as self.ws:
+        async with websockets.connect(ws_url, extra_headers=headers) as ws:
+            self.ws = ws
+            self._realtime_input_committed = False
             # Build and send session.update message specifying audio formats
             # and system instructions. The audio formats must match the
             # inbound call. We use 16 kHz, 16‑bit PCM little endian audio (pcm16).
@@ -371,11 +548,25 @@ class Call(pj.Call):
             # variable or by modifying SYSTEM_PROMPT. Disabled by default.
 
             # Start concurrent audio sending/receiving tasks
-            await asyncio.gather(
-                self.send_audio_to_openai_realtime(),
-                self.receive_audio_from_openai_realtime()
-            )
-    
+            send_task = asyncio.create_task(self.send_audio_to_openai_realtime())
+            recv_task = asyncio.create_task(self.receive_audio_from_openai_realtime())
+
+            def _cancel_sender(_):
+                if not send_task.done():
+                    send_task.cancel()
+
+            recv_task.add_done_callback(_cancel_sender)
+
+            try:
+                await send_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await self._send_realtime_commit()
+            await self._close_websocket()
+            with contextlib.suppress(asyncio.CancelledError):
+                await recv_task
+
     async def send_audio_to_openai_legacy(self):
         """
         Send raw audio frames from the SIP call to the legacy OpenAI voice API.
@@ -383,20 +574,26 @@ class Call(pj.Call):
         directly over the WebSocket connection. Token usage is estimated
         based on frame size to provide approximate cost tracking.
         """
-        while self.audio_callback and self.audio_callback.is_active:
-            try:
-                audio_chunk = await self.audio_callback.audio_queue.get()
-                if audio_chunk and self.ws and not self.ws.closed:
-                    await self.ws.send(audio_chunk)
-                    # Estimate token usage (rough approximation)
+        if not self.audio_callback:
+            return
+        try:
+            while self.audio_callback.is_active:
+                audio_chunk = await self.audio_callback.get_capture_frame()
+                if not audio_chunk:
+                    if not self.audio_callback.is_active:
+                        break
+                    continue
+                if self.ws and not self.ws.closed:
+                    await self._ws_send(audio_chunk)
                     tokens_estimate = len(audio_chunk) // 1000
                     if tokens_estimate > 0:
                         monitor.update_tokens(tokens_estimate)
-            except Exception as e:
-                error_msg = f"Error sending audio to OpenAI: {e}"
-                print(error_msg)
-                monitor.add_log(error_msg)
-                break
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            error_msg = f"Error sending audio to OpenAI: {e}"
+            print(error_msg)
+            monitor.add_log(error_msg)
 
     async def send_audio_to_openai_realtime(self):
         """
@@ -405,27 +602,29 @@ class Call(pj.Call):
         "input_audio_buffer.append" as required by the Realtime API【826943400076790†L230-L249】. Token usage
         estimation is also updated.
         """
-        while self.audio_callback and self.audio_callback.is_active:
-            try:
-                audio_chunk = await self.audio_callback.audio_queue.get()
-                if audio_chunk and self.ws and not self.ws.closed:
-                    # Base64 encode the PCM data
+        if not self.audio_callback:
+            return
+        try:
+            while self.audio_callback.is_active:
+                audio_chunk = await self.audio_callback.get_capture_frame()
+                if not audio_chunk:
+                    if not self.audio_callback.is_active:
+                        break
+                    continue
+                if self.ws and not self.ws.closed:
                     audio_b64 = base64.b64encode(audio_chunk).decode('utf-8')
-                    message = {
-                        "type": "input_audio_buffer.append",
-                        "audio": audio_b64
-                    }
-                    await self.ws.send(json.dumps(message))
-                    # Estimate token usage: divide by approx. 1000 bytes per token
+                    message = {"type": "input_audio_buffer.append", "audio": audio_b64}
+                    await self._ws_send(json.dumps(message))
                     tokens_estimate = len(audio_chunk) // 1000
                     if tokens_estimate > 0:
                         monitor.update_tokens(tokens_estimate)
-            except Exception as e:
-                error_msg = f"Error sending audio to OpenAI (Realtime): {e}"
-                print(error_msg)
-                monitor.add_log(error_msg)
-                break
-    
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            error_msg = f"Error sending audio to OpenAI (Realtime): {e}"
+            print(error_msg)
+            monitor.add_log(error_msg)
+
     async def receive_audio_from_openai_legacy(self):
         """
         Receive audio responses from the legacy voice API and play them back.
@@ -433,15 +632,22 @@ class Call(pj.Call):
         playback_audio for synthesis over the SIP call. Any exceptions are
         logged and break the loop.
         """
+        if not self.audio_callback:
+            return
         try:
             while self.ws and not self.ws.closed:
                 response = await self.ws.recv()
                 if isinstance(response, bytes):
-                    self.playback_audio(response)
+                    await self.audio_callback.queue_playback_frame(response)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             error_msg = f"Error receiving audio from OpenAI: {e}"
             print(error_msg)
             monitor.add_log(error_msg)
+        finally:
+            if self.audio_callback:
+                await self.audio_callback.flush_playback()
 
     async def receive_audio_from_openai_realtime(self):
         """
@@ -453,6 +659,8 @@ class Call(pj.Call):
         (such as transcription updates or system events) are ignored for now
         but could be surfaced to the monitor in the future【826943400076790†L230-L249】.
         """
+        if not self.audio_callback:
+            return
         try:
             while self.ws and not self.ws.closed:
                 raw_msg = await self.ws.recv()
@@ -461,40 +669,23 @@ class Call(pj.Call):
                 try:
                     message = json.loads(raw_msg)
                 except Exception:
-                    # Skip non‑JSON messages
                     continue
                 msg_type = message.get('type')
-                # Handle audio delta messages
                 if msg_type == 'response.output_audio.delta' and 'delta' in message:
                     try:
                         audio_bytes = base64.b64decode(message['delta'])
-                        self.playback_audio(audio_bytes)
+                        await self.audio_callback.queue_playback_frame(audio_bytes)
                     except Exception as decode_err:
                         monitor.add_log(f"Error decoding audio delta: {decode_err}")
-                # You may add handling of transcripts or other events here
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             error_msg = f"Error receiving audio from OpenAI (Realtime): {e}"
             print(error_msg)
             monitor.add_log(error_msg)
-    
-    def playback_audio(self, audio_data):
-        # Play audio back to the caller
-        try:
-            # Create a temporary WAV file
-            with wave.open("temp.wav", "wb") as wf:
-                wf.setnchannels(CHANNELS)
-                wf.setsampwidth(2)  # 16-bit audio
-                wf.setframerate(SAMPLE_RATE)
-                wf.writeframes(audio_data)
-            
-            # Load and play the audio
-            sound = AudioSegment.from_wav("temp.wav")
-            play(sound)
-            
-            # Clean up
-            os.remove("temp.wav")
-        except Exception as e:
-            print(f"Error playing back audio: {e}")
+        finally:
+            if self.audio_callback:
+                await self.audio_callback.flush_playback()
 
 # Account class for SIP registration
 class Account(pj.Account):
