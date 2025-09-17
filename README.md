@@ -85,6 +85,22 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
    detailed error that lists the offending keys in both the console output and
    the monitoring dashboard logs.
 
+   You can validate your `.env` file at any time using the built-in helper:
+
+   ```bash
+   python -m app.config validate --path .env
+   # or via make
+   make env-validate
+   ```
+
+   To regenerate the example configuration with the latest defaults, run:
+
+   ```bash
+   python -m app.config sample --write --path env.example
+   # or
+   make env-sample
+   ```
+
    When using realtime mode the agent sends a `session.update` message to
    OpenAI containing the model, voice, audio format (16‑bit PCM at 16 kHz)
    and system prompt【826943400076790†L230-L249】.  This ensures the session is
@@ -208,6 +224,8 @@ make lint      # ruff check .
 make type      # mypy static type analysis
 make test      # pytest -q
 make format    # apply ruff's formatter
+make env-validate  # validate .env against the pydantic schema
+make env-sample    # regenerate env.example from the canonical template
 ```
 
 The `requirements-dev.txt` file extends the runtime dependencies with the
