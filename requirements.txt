@@ -7,8 +7,9 @@ websockets==11.0.3
 # OpenAI API
 openai>=1.0.0
 
-# Environment variables
-python-dotenv==1.0.0
+# Configuration
+pydantic>=2.7,<3.0
+pydantic-settings>=2.2,<3.0
 
 # Monitoring
 flask==2.0.1

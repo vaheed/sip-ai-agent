@@ -31,7 +31,17 @@ If you encounter unexpected behaviour or a defect:
    git checkout -b feature/your‑feature
    ```
 
-2. **Write code** that adheres to the following standards:
+2. **Set up the tooling** by installing the development dependencies and
+   pre-commit hooks:
+
+   ```bash
+   make dev
+   ```
+
+   This installs the packages listed in `requirements-dev.txt` and registers
+   the repository’s pre-commit hooks locally.
+
+3. **Write code** that adheres to the following standards:
 
    * Follow [PEP 8](https://peps.python.org/pep-0008/) for Python code style.
    * Document new functions, classes and modules with docstrings.
@@ -39,17 +49,28 @@ If you encounter unexpected behaviour or a defect:
    * Write tests where possible; although this project currently lacks a full
      test suite, contributions that include tests are appreciated.
 
-3. **Commit your changes** with clear messages:
+4. **Run the automated checks** before submitting your changes:
+
+   ```bash
+   make lint
+   make type
+   make test
+   ```
+
+   The lint target runs `ruff check`, the type target executes `mypy` with
+   `mypy.ini`, and the test target runs the `pytest` suite.
+
+5. **Commit your changes** with clear messages:
 
    ```bash
    git commit -m "feat: add support for XYZ"
    ```
 
-4. **Push** your branch to GitHub and open a pull request (PR).  In the PR
+6. **Push** your branch to GitHub and open a pull request (PR).  In the PR
    description, describe what you’ve done and reference any issues the PR
    resolves.
 
-5. **Address review feedback**.  We may request changes or clarifications.
+7. **Address review feedback**.  We may request changes or clarifications.
    Please be patient and respond to review comments.
 
 ## Code of Conduct

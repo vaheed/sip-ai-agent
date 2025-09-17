@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import sys
 import time
 import json
@@ -9,8 +8,7 @@ import threading
 import base64
 import queue
 import contextlib
-from typing import Optional, Sequence
-from dotenv import load_dotenv
+from typing import Optional, TYPE_CHECKING
 from openai import OpenAI
 import pjsua2 as pj
 
@@ -29,51 +27,106 @@ except ImportError:  # pragma: no cover - script execution fallback
         metrics,
     )
 
-from monitor import monitor
+if TYPE_CHECKING:  # pragma: no cover - used for type checking only
+    from app.config import Settings as AppSettings
 
-# Load environment variables
-load_dotenv()
+try:
+    from .config import ConfigurationError, get_settings
+except ImportError as exc:  # pragma: no cover - script execution fallback
+    if "attempted relative import" in str(exc) or getattr(exc, "name", "") in {
+        "config",
+        "app.config",
+    }:
+        from config import ConfigurationError, get_settings  # type: ignore
+    else:  # pragma: no cover - surface configuration import issues
+        raise
+
+from monitor import monitor
 
 logger = get_logger(__name__)
 
-# SIP Configuration
-SIP_DOMAIN = os.getenv('SIP_DOMAIN')
-SIP_USER = os.getenv('SIP_USER')
-SIP_PASS = os.getenv('SIP_PASS')
-
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-AGENT_ID = os.getenv('AGENT_ID')
-
-# Additional OpenAI settings
-#
-# OPENAI_MODE controls which audio API to use. Valid values are:
-#   "legacy"  - use the original audio/speech WebSocket API (default)
-#   "realtime" - use the new Realtime API introduced in 2024/2025 for low
-#                 latency speech‑to‑speech. See docs: "GPT‑realtime" for
-#                 more information【214777425731610†L280-L310】.
-OPENAI_MODE = os.getenv('OPENAI_MODE', 'legacy').lower()
-
-# The model name to use when OPENAI_MODE is "realtime". Default to
-# "gpt-realtime" which maps to OpenAI's realtime models. You may change
-# this to newer models such as "gpt-realtime-latest" if available.
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-realtime')
-
-# Preferred voice. The Realtime API supports voices like "alloy", "nova",
-# "shimmer", and the newer "cedar" and "marin" voices【214777425731610†L304-L310】.
-OPENAI_VOICE = os.getenv('OPENAI_VOICE', 'alloy')
-
-# Temperature controls the randomness of the realtime model. Lower values
-# produce more deterministic responses. Must be convertible to float.
+SETTINGS: Optional["AppSettings"]
+CONFIG_ERROR: Optional[ConfigurationError] = None
 try:
-    OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.3'))
-except ValueError:
-    OPENAI_TEMPERATURE = 0.3
+    SETTINGS = get_settings()
+except ConfigurationError as exc:  # pragma: no cover - exercised at runtime
+    CONFIG_ERROR = exc
+    SETTINGS = None
+else:
+    CONFIG_ERROR = None
 
-# System prompt for realtime sessions. This instructs the assistant on
-# behaviour. Only used when OPENAI_MODE == "realtime". If not set,
-# a generic helpful assistant prompt is used.
-SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT', 'You are a helpful voice assistant.')
+# SIP Configuration
+if SETTINGS is not None:
+    SIP_DOMAIN = SETTINGS.sip_domain
+    SIP_USER = SETTINGS.sip_user
+    SIP_PASS = SETTINGS.sip_pass
+
+    # OpenAI Configuration
+    OPENAI_API_KEY = SETTINGS.openai_api_key
+    AGENT_ID = SETTINGS.agent_id
+
+    # Additional OpenAI settings
+    OPENAI_MODE = SETTINGS.openai_mode
+    OPENAI_MODEL = SETTINGS.openai_model
+    OPENAI_VOICE = SETTINGS.openai_voice
+    OPENAI_TEMPERATURE = SETTINGS.openai_temperature
+    SYSTEM_PROMPT = SETTINGS.system_prompt
+
+    ENABLE_SIP = SETTINGS.enable_sip
+    ENABLE_AUDIO = SETTINGS.enable_audio
+
+    # SIP media and transport tuning
+    SIP_TRANSPORT_PORT = SETTINGS.sip_transport_port
+    SIP_JB_MIN = SETTINGS.sip_jb_min
+    SIP_JB_MAX = SETTINGS.sip_jb_max
+    SIP_JB_MAX_PRE = SETTINGS.sip_jb_max_pre
+    SIP_ENABLE_ICE = SETTINGS.sip_enable_ice
+    SIP_ENABLE_TURN = SETTINGS.sip_enable_turn
+    SIP_STUN_SERVER = SETTINGS.sip_stun_server or ""
+    SIP_TURN_SERVER = SETTINGS.sip_turn_server or ""
+    SIP_TURN_USER = SETTINGS.sip_turn_user or ""
+    SIP_TURN_PASS = SETTINGS.sip_turn_pass or ""
+    SIP_ENABLE_SRTP = SETTINGS.sip_enable_srtp
+    SIP_SRTP_OPTIONAL = SETTINGS.sip_srtp_optional
+    SIP_PREFERRED_CODECS = SETTINGS.sip_preferred_codecs
+
+    # Retry behaviour
+    SIP_REG_RETRY_BASE = SETTINGS.sip_reg_retry_base
+    SIP_REG_RETRY_MAX = SETTINGS.sip_reg_retry_max
+    SIP_INVITE_RETRY_BASE = SETTINGS.sip_invite_retry_base
+    SIP_INVITE_RETRY_MAX = SETTINGS.sip_invite_retry_max
+    SIP_INVITE_MAX_ATTEMPTS = SETTINGS.sip_invite_max_attempts
+else:  # pragma: no cover - exercised when configuration is invalid
+    SIP_DOMAIN = ""
+    SIP_USER = ""
+    SIP_PASS = ""
+    OPENAI_API_KEY = ""
+    AGENT_ID = ""
+    OPENAI_MODE = "legacy"
+    OPENAI_MODEL = "gpt-realtime"
+    OPENAI_VOICE = "alloy"
+    OPENAI_TEMPERATURE = 0.3
+    SYSTEM_PROMPT = "You are a helpful voice assistant."
+    ENABLE_SIP = True
+    ENABLE_AUDIO = True
+    SIP_TRANSPORT_PORT = 5060
+    SIP_JB_MIN = 0
+    SIP_JB_MAX = 0
+    SIP_JB_MAX_PRE = 0
+    SIP_ENABLE_ICE = False
+    SIP_ENABLE_TURN = False
+    SIP_STUN_SERVER = ""
+    SIP_TURN_SERVER = ""
+    SIP_TURN_USER = ""
+    SIP_TURN_PASS = ""
+    SIP_ENABLE_SRTP = False
+    SIP_SRTP_OPTIONAL = True
+    SIP_PREFERRED_CODECS = ()
+    SIP_REG_RETRY_BASE = 2.0
+    SIP_REG_RETRY_MAX = 60.0
+    SIP_INVITE_RETRY_BASE = 1.0
+    SIP_INVITE_RETRY_MAX = 30.0
+    SIP_INVITE_MAX_ATTEMPTS = 5
 
 # Audio settings
 SAMPLE_RATE = 16000
@@ -82,65 +135,6 @@ FRAME_DURATION = 20  # ms
 PCM_WIDTH = 2  # 16-bit PCM
 FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    """Return a boolean value from environment variables."""
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_float(name: str, default: float) -> float:
-    """Return a float value from environment variables with fallback."""
-    try:
-        return float(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    """Return an integer value from environment variables with fallback."""
-    try:
-        return int(float(os.getenv(name, str(default))))
-    except (TypeError, ValueError):
-        return default
-
-
-def _parse_codec_prefs(raw: Optional[str]) -> Sequence[str]:
-    """Parse the comma separated codec list from configuration."""
-    if not raw:
-        return ()
-    codecs = []
-    for item in raw.split(','):
-        codec = item.strip()
-        if codec:
-            codecs.append(codec)
-    return tuple(codecs)
-
-
-# SIP media and transport tuning
-SIP_TRANSPORT_PORT = _env_int('SIP_TRANSPORT_PORT', 5060)
-SIP_JB_MIN = _env_int('SIP_JB_MIN', 0)
-SIP_JB_MAX = _env_int('SIP_JB_MAX', 0)
-SIP_JB_MAX_PRE = _env_int('SIP_JB_MAX_PRE', 0)
-SIP_ENABLE_ICE = _env_bool('SIP_ENABLE_ICE', False)
-SIP_ENABLE_TURN = _env_bool('SIP_ENABLE_TURN', False)
-SIP_STUN_SERVER = os.getenv('SIP_STUN_SERVER', '').strip()
-SIP_TURN_SERVER = os.getenv('SIP_TURN_SERVER', '').strip()
-SIP_TURN_USER = os.getenv('SIP_TURN_USER', '').strip()
-SIP_TURN_PASS = os.getenv('SIP_TURN_PASS', '').strip()
-SIP_ENABLE_SRTP = _env_bool('SIP_ENABLE_SRTP', False)
-SIP_SRTP_OPTIONAL = _env_bool('SIP_SRTP_OPTIONAL', True)
-SIP_PREFERRED_CODECS = _parse_codec_prefs(os.getenv('SIP_PREFERRED_CODECS'))
-
-# Retry behaviour
-SIP_REG_RETRY_BASE = _env_float('SIP_REG_RETRY_BASE', 2.0)
-SIP_REG_RETRY_MAX = _env_float('SIP_REG_RETRY_MAX', 60.0)
-SIP_INVITE_RETRY_BASE = _env_float('SIP_INVITE_RETRY_BASE', 1.0)
-SIP_INVITE_RETRY_MAX = _env_float('SIP_INVITE_RETRY_MAX', 30.0)
-SIP_INVITE_MAX_ATTEMPTS = _env_int('SIP_INVITE_MAX_ATTEMPTS', 5)
 
 
 class EndpointTimer(pj.TimerEntry):
@@ -191,7 +185,7 @@ class EndpointTimer(pj.TimerEntry):
         self._callback()
 
 # Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY or None)
 
 # Audio callback class for PJSIP
 class AudioCallback(pj.AudioMedia):
@@ -332,7 +326,7 @@ class Call(pj.Call):
         self.acc = acc
         self.audio_callback = None
         self.ws = None
-        self.openai_thread = None
+        self.openai_thread: Optional[threading.Thread] = None
         self.call_id = call_id
         self.target_uri = target_uri
         self._invite_attempts = 0
@@ -416,6 +410,15 @@ class Call(pj.Call):
                     event="call_established",
                 )
                 monitor.record_audio_event('call_established', call_id=call_id)
+
+                if not ENABLE_AUDIO:
+                    self._log_event(
+                        "Audio bridge disabled by configuration",
+                        level='warning',
+                        event='audio_disabled',
+                    )
+                    monitor.record_audio_event('audio_disabled', call_id=call_id)
+                    return
 
                 # Create audio callback and connect audio media
                 self.audio_callback = AudioCallback(self)
@@ -1059,16 +1062,43 @@ def main():
     monitor.start()
     logger.info("SIP AI agent starting", extra={"event": "agent_start"})
 
-    # Check environment variables
-    if not all([SIP_DOMAIN, SIP_USER, SIP_PASS, OPENAI_API_KEY, AGENT_ID]):
-        error_msg = "Error: Missing environment variables. Please check your .env file."
+    if CONFIG_ERROR is not None:
+        error_msg = "Configuration validation failed"
         monitor.add_log(
             error_msg,
             level='error',
             event='configuration_error',
         )
+        for detail in CONFIG_ERROR.details:
+            monitor.add_log(
+                detail,
+                level='error',
+                event='configuration_error_detail',
+            )
+        logger.error(
+            error_msg,
+            extra={"event": "configuration_error", "details": CONFIG_ERROR.details},
+        )
+        print(CONFIG_ERROR, file=sys.stderr)
         sys.exit(1)
-        
+
+    if not ENABLE_SIP:
+        warning_msg = (
+            "SIP stack disabled via ENABLE_SIP=0. Monitoring server will stay active."
+        )
+        monitor.add_log(
+            warning_msg,
+            level='warning',
+            event='sip_disabled',
+        )
+        logger.warning(warning_msg, extra={"event": "sip_disabled"})
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            monitor.add_log("Exiting on keyboard interrupt", event='agent_shutdown')
+        return
+
     # Create and initialize PJSIP library
     ep_cfg = pj.EpConfig()
     # Apply jitter buffer preferences when provided
@@ -1099,7 +1129,7 @@ def main():
     # Create SIP transport
     transport_cfg = pj.TransportConfig()
     transport_cfg.port = SIP_TRANSPORT_PORT
-    transport = ep.transportCreate(pj.PJSIP_TRANSPORT_UDP, transport_cfg)
+    ep.transportCreate(pj.PJSIP_TRANSPORT_UDP, transport_cfg)
 
     # Start PJSIP
     ep.libStart()
