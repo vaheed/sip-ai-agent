@@ -11,4 +11,5 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.2,<3.0
 
 # Monitoring
-flask==2.0.1
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30,<0.31
