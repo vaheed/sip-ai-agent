@@ -1,4 +1,14 @@
-FROM python:3.9-slim
+FROM node:20 AS frontend-builder
+
+WORKDIR /frontend
+
+COPY web/package*.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+FROM python:3.9-slim AS backend
 
 WORKDIR /app
 
@@ -24,7 +34,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir "werkzeug<3.0.0" "flask<3.0.0"
 
 # Copy application code
-COPY app/ .
+COPY app/ ./
+COPY --from=frontend-builder /frontend/dist ./static/dashboard
 
 # Expose ports
 EXPOSE 8080
@@ -32,3 +43,10 @@ EXPOSE 5060/udp
 EXPOSE 16000-16100/udp
 
 CMD ["python", "agent.py"]
+
+FROM nginx:1.25-alpine AS dashboard
+
+COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
+
+EXPOSE 80
