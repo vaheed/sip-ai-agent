@@ -1,107 +1,332 @@
 #!/usr/bin/env python3
-import os
-import time
-import threading
-from flask import Flask, jsonify, render_template_string, request
+"""Monitoring server powered by FastAPI with websocket streaming."""
 
-def _env_path():
-    """
-    Return the absolute path to the .env file located two directories above
-    this monitor module. This function assumes the project structure of
-    /project/sip-ai-agent-main/app/monitor.py and returns
-    /project/sip-ai-agent-main/.env. Modify this logic if the repository
-    layout changes.
-    """
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+from __future__ import annotations
+
+import asyncio
+import csv
+import io
+import hmac
+import json
+import os
+import sys
+import secrets
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, cast
+
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
+
+try:
+    from .config import (
+        ConfigurationError,
+        get_settings,
+        merge_env,
+        read_env_file,
+        validate_env_map,
+        write_env_file,
+    )
+except ImportError as exc:  # pragma: no cover - script execution fallback
+    if "attempted relative import" in str(exc) or getattr(exc, "name", "") in {
+        "config",
+        "app.config",
+    }:
+        from config import (  # type: ignore
+            ConfigurationError,
+            get_settings,
+            merge_env,
+            read_env_file,
+            validate_env_map,
+            write_env_file,
+        )
+    else:  # pragma: no cover - surface configuration import issues
+        raise
+
+try:
+    from .observability import (
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
+except ImportError:  # pragma: no cover - script execution fallback
+    from observability import (  # type: ignore
+        correlation_scope,
+        generate_correlation_id,
+        get_logger,
+        metrics,
+    )
 
 
 def load_config() -> dict:
-    """
-    Load key/value pairs from the project's .env file.
+    """Return the current configuration as a mapping of strings."""
 
-    The .env file stores configuration values used by the SIP agent. Lines
-    starting with '#' are treated as comments and ignored. Values are
-    returned as strings. If the file does not exist, an empty dict is
-    returned. Unknown whitespace around keys/values is stripped.
-    """
-    config = {}
-    env_path = _env_path()
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    if '=' in line:
-                        key, value = line.split('=', 1)
-                        config[key.strip()] = value.strip()
-        except Exception:
-            # Silently ignore read errors; caller can handle missing keys
-            pass
-    return config
+    try:
+        return get_settings().as_env()
+    except ConfigurationError:
+        return read_env_file()
 
 
 def save_config(new_config: dict) -> None:
-    """
-    Persist updated configuration values to the project's .env file.
+    """Validate and persist configuration updates to the ``.env`` file."""
 
-    Any keys provided in ``new_config`` will override existing values. Keys
-    not present in ``new_config`` are preserved. The resulting file is
-    written back to disk as simple ``KEY=value`` lines. Comments and
-    ordering from the original file are not preserved.
-
-    :param new_config: mapping of environment variable names to new values
-    """
-    env_path = _env_path()
-    # Start with existing config
-    config = load_config()
-    # Override with new values (cast everything to string)
-    for k, v in new_config.items():
-        config[k] = str(v)
-    # Write back
-    lines = [f"{key}={value}" for key, value in config.items()]
-    try:
-        with open(env_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines))
-    except Exception:
-        # If we cannot write the env file, surface an error to the caller
-        raise
+    existing = read_env_file()
+    merged = merge_env(existing, new_config)
+    validate_env_map(merged, include_os_environ=False)
+    write_env_file(merged)
+    get_settings.cache_clear()
 
 
 class Monitor:
-    """
-    Monitor tracks SIP registration state, active calls, token usage and logs.
+    """Expose agent state over HTTP, JSON and websocket APIs."""
 
-    It also exposes a simple HTTP dashboard for real‑time observation and
-    configuration. The dashboard supports viewing and updating key settings
-    stored in the .env file as well as inspecting call history. To use the
-    configuration features, ensure the Docker container has permissions to
-    write the `.env` file located in the repository root.
-    """
-
-    # Keys presented on the configuration dashboard. Order matters for
-    # rendering. Feel free to extend this list with additional environment
-    # variables that should be editable through the UI.
     CONFIG_KEYS = [
-        'SIP_DOMAIN', 'SIP_USER', 'SIP_PASS', 'OPENAI_API_KEY', 'AGENT_ID',
-        'OPENAI_MODE', 'OPENAI_MODEL', 'OPENAI_VOICE', 'OPENAI_TEMPERATURE', 'SYSTEM_PROMPT'
+        "SIP_DOMAIN",
+        "SIP_USER",
+        "SIP_PASS",
+        "OPENAI_API_KEY",
+        "AGENT_ID",
+        "ENABLE_SIP",
+        "ENABLE_AUDIO",
+        "OPENAI_MODE",
+        "OPENAI_MODEL",
+        "OPENAI_VOICE",
+        "OPENAI_TEMPERATURE",
+        "SYSTEM_PROMPT",
+        "SIP_TRANSPORT_PORT",
+        "SIP_JB_MIN",
+        "SIP_JB_MAX",
+        "SIP_JB_MAX_PRE",
+        "SIP_ENABLE_ICE",
+        "SIP_ENABLE_TURN",
+        "SIP_STUN_SERVER",
+        "SIP_TURN_SERVER",
+        "SIP_TURN_USER",
+        "SIP_TURN_PASS",
+        "SIP_ENABLE_SRTP",
+        "SIP_SRTP_OPTIONAL",
+        "SIP_PREFERRED_CODECS",
+        "SIP_REG_RETRY_BASE",
+        "SIP_REG_RETRY_MAX",
+        "SIP_INVITE_RETRY_BASE",
+        "SIP_INVITE_RETRY_MAX",
+        "SIP_INVITE_MAX_ATTEMPTS",
     ]
 
-    def __init__(self):
-        self.app = Flask(__name__)
+    def __init__(self) -> None:
+        self.app = FastAPI(title="SIP AI Agent Monitor")
+        self.logger = get_logger(__name__)
+
+        dashboard_dir_env = os.getenv("MONITOR_DASHBOARD_DIR")
+        self.dashboard_dir: Path
+        if dashboard_dir_env:
+            self.dashboard_dir = Path(dashboard_dir_env).expanduser().resolve()
+        else:
+            default_candidates = [
+                Path(__file__).resolve().parent / "static" / "dashboard",
+                Path(__file__).resolve().parent.parent / "web" / "dist",
+            ]
+            for candidate in default_candidates:
+                if candidate.exists():
+                    self.dashboard_dir = candidate.resolve()
+                    break
+            else:
+                self.dashboard_dir = default_candidates[0].resolve()
+
+        # Agent state
         self.sip_registered = False
-        self.active_calls = []
-        self.call_history = []  # list of dicts with call_id, start, end
+        self.active_calls: List[str] = []
+        self.call_history: List[Dict[str, Any]] = []
         self.api_tokens_used = 0
-        self.logs = []
+        self.logs: List[str] = []
         self.max_logs = 100
+        self._call_context: Dict[str, Dict[str, Any]] = {}
+        self.realtime_ws_state: str = "unknown"
+        self.realtime_ws_detail: Optional[str] = None
+        self.realtime_ws_last_event: Optional[float] = None
+
+        # Authentication/session management
+        self.admin_username = os.getenv("MONITOR_ADMIN_USERNAME", "admin")
+        self.admin_password = os.getenv("MONITOR_ADMIN_PASSWORD", "admin")
+        self.session_cookie = os.getenv("MONITOR_SESSION_COOKIE", "monitor_session")
+        self.session_ttl = int(os.getenv("MONITOR_SESSION_TTL", "86400"))
+        self._sessions: Dict[str, Dict[str, Any]] = {}
+        self._session_lock = threading.Lock()
+
+        # Websocket broadcasting
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._event_subscribers: Set[asyncio.Queue[Dict[str, Any]]] = set()
+        self._event_lock = threading.Lock()
+
+        self._server_thread: Optional[threading.Thread] = None
+
+        # Safe reload tracking
+        self._reload_thread: Optional[threading.Thread] = None
+        self._reload_lock = threading.Lock()
+        self._reload_status: str = "idle"
+        self._reload_error: Optional[str] = None
+        self._reload_poll_interval = 1.0
+        self._reload_restart_delay = 0.5
+
         self.setup_routes()
-        
-    def setup_routes(self):
-        @self.app.route('/')
-        def index():
-            return render_template_string('''
+
+    # ------------------------------------------------------------------
+    # Session helpers
+
+    def _verify_credentials(self, username: str, password: str) -> bool:
+        return bool(
+            hmac.compare_digest(username.strip(), self.admin_username)
+            and hmac.compare_digest(password, self.admin_password)
+        )
+
+    def _create_session(self, username: str) -> str:
+        session_id = secrets.token_urlsafe(32)
+        expires_at = time.time() + self.session_ttl
+        with self._session_lock:
+            self._sessions[session_id] = {"username": username, "expires_at": expires_at}
+        return session_id
+
+    def _get_session(self, session_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not session_id:
+            return None
+        with self._session_lock:
+            data = self._sessions.get(session_id)
+            if not data:
+                return None
+            if data["expires_at"] < time.time():
+                self._sessions.pop(session_id, None)
+                return None
+            data["expires_at"] = time.time() + self.session_ttl
+            return data
+
+    def _clear_session(self, session_id: Optional[str]) -> None:
+        if not session_id:
+            return
+        with self._session_lock:
+            self._sessions.pop(session_id, None)
+
+    # ------------------------------------------------------------------
+    # Broadcasting helpers
+
+    def _status_payload(self) -> Dict[str, Any]:
+        return {
+            "sip_registered": self.sip_registered,
+            "active_calls": list(self.active_calls),
+            "api_tokens_used": self.api_tokens_used,
+            "realtime_ws_state": self.realtime_ws_state,
+            "realtime_ws_detail": self.realtime_ws_detail,
+        }
+
+    def _call_history_payload(self) -> List[Dict[str, Any]]:
+        return [dict(item) for item in self.call_history]
+
+    def _push_event(self, event: Dict[str, Any]) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+
+        async def _broadcast() -> None:
+            stale: List[asyncio.Queue[Dict[str, Any]]] = []
+            with self._event_lock:
+                subscribers = list(self._event_subscribers)
+            for queue in subscribers:
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    stale.append(queue)
+            if stale:
+                with self._event_lock:
+                    for queue in stale:
+                        self._event_subscribers.discard(queue)
+
+        asyncio.run_coroutine_threadsafe(_broadcast(), loop)
+
+    def _emit_status_event(self) -> None:
+        self._push_event({"type": "status", "payload": self._status_payload()})
+        self._push_event({"type": "call_history", "payload": self._call_history_payload()})
+
+    def _emit_metrics_event(self) -> None:
+        self._push_event({"type": "metrics", "payload": metrics.snapshot()})
+
+    # ------------------------------------------------------------------
+    # Routes
+
+    def setup_routes(self) -> None:
+        @self.app.on_event("startup")
+        async def _on_startup() -> None:  # pragma: no cover - async event loop binding
+            self._loop = asyncio.get_event_loop()
+
+        def _admin_dependency(request: Request) -> Dict[str, Any]:
+            session = self._get_session(request.cookies.get(self.session_cookie))
+            if not session:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication required",
+                )
+            return session
+
+        def _render_login(message: str = "", next_path: str = "/dashboard") -> HTMLResponse:
+            alert = f"<p style='color:#F44336;'>{message}</p>" if message else ""
+            return HTMLResponse(
+                f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Monitor Login</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; background: #f5f5f5; }}
+                        .card {{ max-width: 400px; margin: auto; background: #fff; padding: 30px; border-radius: 6px;
+                                 box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                        label {{ display: block; margin-bottom: 6px; font-weight: bold; }}
+                        input[type="text"], input[type="password"] {{ width: 100%; padding: 10px; margin-bottom: 15px;
+                            border: 1px solid #ccc; border-radius: 4px; }}
+                        button {{ width: 100%; padding: 10px; background-color: #4CAF50; color: white;
+                            border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }}
+                        button:hover {{ background-color: #45a049; }}
+                        .footer {{ text-align: center; margin-top: 20px; color: #666; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <h1>Admin Login</h1>
+                        {alert}
+                        <form method="post" action="/login">
+                            <input type="hidden" name="next" value="{next_path}">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" name="username" required>
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" required>
+                            <button type="submit">Sign in</button>
+                        </form>
+                    </div>
+                    <div class="footer">SIP AI Agent Monitor</div>
+                </body>
+                </html>
+                """,
+            )
+
+        @self.app.get("/", response_class=HTMLResponse)
+        async def index() -> str:
+            return """
             <!DOCTYPE html>
             <html>
             <head>
@@ -109,264 +334,614 @@ class Monitor:
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
                     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
-                    .container { max-width: 1200px; margin: 0 auto; }
-                    .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                    .container { max-width: 960px; margin: 0 auto; }
+                    .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                     .status { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
                     .status.green { background-color: #4CAF50; }
                     .status.red { background-color: #F44336; }
-                    .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
+                    .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px;
+                            overflow-y: auto; font-family: monospace; }
                     h1, h2 { color: #333; }
-                    .refresh { margin-bottom: 20px; }
+                    .actions { margin-bottom: 20px; }
+                    a.button { padding: 10px 20px; background: #4CAF50; color: #fff; border-radius: 3px;
+                               text-decoration: none; }
+                    a.button:hover { background: #45a049; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h1>SIP AI Agent Monitor</h1>
-                    <button class="refresh" onclick="location.reload()">Refresh</button>
-                    
-                    <div class="card">
-                        <h2>SIP Registration</h2>
-                        <p>
-                            <span class="status {{ 'green' if sip_registered else 'red' }}"></span>
-                            {{ 'Registered' if sip_registered else 'Not Registered' }}
-                        </p>
+                    <div class="actions">
+                        <a class="button" href="/dashboard">Open Dashboard</a>
+                        <a class="button" href="/login">Admin Login</a>
                     </div>
-                    
                     <div class="card">
-                        <h2>Active Calls</h2>
-                        {% if active_calls %}
-                            <ul>
-                            {% for call in active_calls %}
-                                <li>{{ call }}</li>
-                            {% endfor %}
-                            </ul>
-                        {% else %}
-                            <p>No active calls</p>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="card">
-                        <h2>API Usage</h2>
-                        <p>Tokens used: {{ api_tokens_used }}</p>
-                    </div>
-                    
-                    <div class="card">
-                        <h2>Logs</h2>
-                        <div class="logs">
-                            {% for log in logs %}
-                                <div>{{ log }}</div>
-                            {% endfor %}
-                        </div>
+                        <h2>About</h2>
+                        <p>The monitoring dashboard requires administrator authentication. Use the login link above to
+                           access configuration and live updates.</p>
                     </div>
                 </div>
             </body>
             </html>
-            ''', sip_registered=self.sip_registered, active_calls=self.active_calls, 
-                 api_tokens_used=self.api_tokens_used, logs=self.logs)
-
-        @self.app.route('/dashboard', methods=['GET'])
-        def dashboard():
             """
-            Serve a dashboard page with real‑time status and a configuration form.
 
-            The dashboard uses JavaScript to periodically fetch status, logs and
-            call history via the API endpoints. When the user submits the form
-            the configuration is saved to `.env` and the page reloads. Note that
-            a restart of the container may be required for changes to take
-            effect.
-            """
-            config = load_config()
-            # build HTML form inputs for each config key
-            config_fields = []
-            for key in Monitor.CONFIG_KEYS:
-                value = config.get(key, '')
-                # Escape HTML special characters
-                safe_value = str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-                config_fields.append(f'<label for="{key}">{key}</label><input type="text" id="{key}" name="{key}" value="{safe_value}" style="width:100%"/><br/>')
-            config_form = '\n'.join(config_fields)
-            return render_template_string('''
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>AI Agent Dashboard</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.5; }
-                    .container { max-width: 1200px; margin: 0 auto; }
-                    .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                    table { width: 100%; border-collapse: collapse; }
-                    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-                    .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
-                    input[type="text"] { padding: 8px; margin-bottom: 10px; border-radius: 3px; border: 1px solid #ccc; }
-                    button { padding: 10px 20px; background-color: #4CAF50; color: #fff; border: none; border-radius: 3px; cursor: pointer; }
-                    button:hover { background-color: #45a049; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>AI Agent Dashboard</h1>
-                    <div class="card">
-                        <h2>Configuration</h2>
-                        <form id="configForm" method="post" action="/api/update_config">
-                            ''' + config_form + '''
-                            <button type="submit">Save</button>
-                        </form>
-                        <p><small>After saving, restart the container to apply changes.</small></p>
-                    </div>
-                    <div class="card">
-                        <h2>Status</h2>
-                        <p id="registrationStatus">Loading...</p>
-                        <p id="activeCalls">Loading...</p>
-                        <p id="tokenUsage">Loading...</p>
-                    </div>
-                    <div class="card">
-                        <h2>Call History</h2>
-                        <table id="callHistoryTable">
-                            <thead><tr><th>Call ID</th><th>Start</th><th>End</th><th>Duration</th></tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div class="card">
-                        <h2>Logs</h2>
-                        <div class="logs" id="logContainer"></div>
-                    </div>
-                </div>
-                <script>
-                async function fetchData() {
-                    try {
-                        const [statusRes, logsRes, historyRes] = await Promise.all([
-                            fetch('/api/status'),
-                            fetch('/api/logs'),
-                            fetch('/api/call_history')
-                        ]);
-                        const status = await statusRes.json();
-                        const logsData = await logsRes.json();
-                        const history = await historyRes.json();
-                        // Update status
-                        document.getElementById('registrationStatus').textContent = status.sip_registered ? 'SIP Registered' : 'SIP Not Registered';
-                        document.getElementById('activeCalls').textContent = 'Active calls: ' + (status.active_calls.length > 0 ? status.active_calls.join(', ') : 'None');
-                        document.getElementById('tokenUsage').textContent = 'Tokens used: ' + status.api_tokens_used;
-                        // Update logs
-                        const logContainer = document.getElementById('logContainer');
-                        logContainer.innerHTML = logsData.logs.map(l => '<div>' + l + '</div>').join('');
-                        logContainer.scrollTop = logContainer.scrollHeight;
-                        // Update call history
-                        const tbody = document.querySelector('#callHistoryTable tbody');
-                        tbody.innerHTML = '';
-                        history.forEach(item => {
-                            const start = new Date(item.start * 1000).toLocaleString();
-                            const end = item.end ? new Date(item.end * 1000).toLocaleString() : '-';
-                            const duration = item.end ? ((item.end - item.start).toFixed(1) + 's') : '-';
-                            const row = '<tr><td>' + item.call_id + '</td><td>' + start + '</td><td>' + end + '</td><td>' + duration + '</td></tr>';
-                            tbody.innerHTML += row;
-                        });
-                    } catch (e) {
-                        console.error('Error fetching data', e);
-                    }
-                }
-                setInterval(fetchData, 3000);
-                window.onload = fetchData;
-                </script>
-            </body>
-            </html>
-            ''')
+        @self.app.get("/login", response_class=HTMLResponse)
+        async def login_page(request: Request) -> HTMLResponse:
+            next_path = request.query_params.get("next", "/dashboard")
+            return _render_login(next_path=next_path)
 
-        @self.app.route('/api/update_config', methods=['POST'])
-        def api_update_config():
-            """
-            Update the configuration file with values submitted from the dashboard.
+        @self.app.post("/login")
+        async def login(request: Request) -> Response:
+            content_type = request.headers.get("content-type", "")
+            next_path = "/dashboard"
+            if content_type.startswith("application/json"):
+                payload = await request.json()
+                username = str(payload.get("username", ""))
+                password = str(payload.get("password", ""))
+                next_path = str(payload.get("next", next_path)) or "/dashboard"
+            else:
+                form = await request.form()
+                username = str(form.get("username", ""))
+                password = str(form.get("password", ""))
+                next_path = str(form.get("next", next_path)) or "/dashboard"
 
-            Only keys defined in CONFIG_KEYS are considered. Unknown keys are
-            ignored. Returns a JSON object with a success flag.
-            """
+            if self._verify_credentials(username, password):
+                session_id = self._create_session(username)
+                response: Response
+                if content_type.startswith("application/json"):
+                    response = JSONResponse({"success": True, "redirect": next_path})
+                else:
+                    response = RedirectResponse(next_path, status_code=status.HTTP_303_SEE_OTHER)
+                response.set_cookie(
+                    self.session_cookie,
+                    session_id,
+                    httponly=True,
+                    max_age=self.session_ttl,
+                    samesite="lax",
+                )
+                self.add_log("Administrator logged in", event="admin_login", username=username)
+                return response
+
+            if content_type.startswith("application/json"):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+            self.add_log(
+                "Failed login attempt",
+                level="warning",
+                event="admin_login_failed",
+                username=username,
+            )
+            return _render_login("Invalid username or password", next_path=next_path)
+
+        @self.app.post("/logout")
+        async def logout(request: Request) -> Response:
+            session_id = request.cookies.get(self.session_cookie)
+            username = None
+            if session_id:
+                session = self._get_session(session_id)
+                if session:
+                    username = session.get("username")
+            self._clear_session(session_id)
+            response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+            response.delete_cookie(self.session_cookie)
+            if username:
+                self.add_log("Administrator logged out", event="admin_logout", username=username)
+            return response
+
+        @self.app.get("/dashboard", response_class=HTMLResponse)
+        @self.app.get("/dashboard/", response_class=HTMLResponse)
+        async def dashboard(request: Request) -> Response:
+            if not self._get_session(request.cookies.get(self.session_cookie)):
+                return RedirectResponse(
+                    f"/login?next={request.url.path}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+
+            index_file = self.dashboard_dir / "index.html"
+            if index_file.exists():
+                try:
+                    html = index_file.read_text(encoding="utf-8")
+                except OSError as exc:  # pragma: no cover - filesystem failure
+                    self.logger.error("Unable to read dashboard index", extra={"error": str(exc)})
+                else:
+                    return HTMLResponse(html)
+
+            message = """<!DOCTYPE html>
+<html>
+<head><title>Dashboard assets missing</title></head>
+<body>
+<h1>Dashboard assets unavailable</h1>
+<p>The React dashboard has not been built. Run <code>npm run build</code> inside the <code>web/</code> directory to generate static assets.</p>
+</body>
+</html>"""
+            return HTMLResponse(message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        @self.app.get("/dashboard/{asset_path:path}")
+        async def dashboard_assets(asset_path: str, request: Request) -> Response:
+            if not self._get_session(request.cookies.get(self.session_cookie)):
+                return RedirectResponse(
+                    f"/login?next={request.url.path}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+
+            safe_root = self.dashboard_dir
+            file_path = (safe_root / asset_path).resolve()
             try:
-                # Prefer JSON body if sent via fetch(). Fallback to form data.
-                new_config = {}
-                if request.is_json:
-                    incoming = request.get_json() or {}
+                file_path.relative_to(safe_root)
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+            if not file_path.is_file():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+            return FileResponse(file_path)
+
+        @self.app.post("/api/update_config")
+        async def api_update_config(
+            request: Request,
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> JSONResponse:
+            del session
+            try:
+                new_config: Dict[str, str] = {}
+                content_type = request.headers.get("content-type", "")
+                if content_type.startswith("application/json"):
+                    incoming = await request.json()
                     for key in Monitor.CONFIG_KEYS:
                         if key in incoming:
                             new_config[key] = str(incoming[key])
                 else:
+                    form = await request.form()
                     for key in Monitor.CONFIG_KEYS:
-                        val = request.form.get(key)
-                        if val is not None:
-                            new_config[key] = val
+                        value = form.get(key)
+                        if value is not None:
+                            new_config[key] = str(value)
+                reload_status: Optional[Dict[str, Any]] = None
                 if new_config:
                     save_config(new_config)
-                    self.add_log(f"Configuration updated: {', '.join(new_config.keys())}")
-                return jsonify({'success': True})
-            except Exception as e:
-                self.add_log(f"Error updating config: {e}")
-                return jsonify({'success': False, 'error': str(e)}), 500
+                    self.add_log(
+                        "Configuration updated",
+                        event="configuration_updated",
+                        keys=list(new_config.keys()),
+                    )
+                    reload_status = self.request_safe_reload()
+                else:
+                    reload_status = {
+                        "status": "noop",
+                        "active_calls": len(self.active_calls),
+                        "message": self._format_reload_message("noop", len(self.active_calls)),
+                    }
+                return JSONResponse({"success": True, "reload": reload_status})
+            except ConfigurationError as err:
+                self.add_log(
+                    f"Configuration validation error: {err}",
+                    level="error",
+                    event="configuration_error",
+                )
+                return JSONResponse(
+                    {
+                        "success": False,
+                        "error": str(err),
+                        "details": err.details,
+                    },
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception as exc:  # pragma: no cover - defensive logging
+                self.add_log(f"Error updating config: {exc}")
+                return JSONResponse(
+                    {"success": False, "error": str(exc)},
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
-        @self.app.route('/api/call_history')
-        def api_call_history():
-            """
-            Return the call history as JSON. Each item has call_id, start, end.
-            """
-            return jsonify(self.call_history)
-        
-        @self.app.route('/api/status')
-        def api_status():
-            return jsonify({
-                'sip_registered': self.sip_registered,
-                'active_calls': self.active_calls,
-                'api_tokens_used': self.api_tokens_used
-            })
-        
-        @self.app.route('/api/logs')
-        def api_logs():
-            return jsonify({
-                'logs': self.logs
-            })
-    
-    def update_registration(self, status):
-        self.sip_registered = status
-        self.add_log(f"SIP Registration: {'Registered' if status else 'Not Registered'}")
-    
-    def add_call(self, call_id):
-        if call_id not in self.active_calls:
-            self.active_calls.append(call_id)
-            # Record call start time
-            self.call_history.append({'call_id': call_id, 'start': time.time(), 'end': None})
-            self.add_log(f"New call: {call_id}")
-    
-    def remove_call(self, call_id):
-        if call_id in self.active_calls:
-            self.active_calls.remove(call_id)
-            # Record call end time
-            for item in self.call_history:
-                if item['call_id'] == call_id and item['end'] is None:
-                    item['end'] = time.time()
+        @self.app.get("/api/call_history")
+        async def api_call_history(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> List[Dict[str, Any]]:
+            del session
+            return self._call_history_payload()
+
+        @self.app.get("/api/call_history.csv")
+        async def api_call_history_csv(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> StreamingResponse:
+            del session
+
+            history = self._call_history_payload()
+            now = time.time()
+
+            def format_timestamp(value: Any) -> str:
+                if not isinstance(value, (int, float)):
+                    return ""
+                return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+
+            def csv_iter() -> Iterable[str]:
+                buffer = io.StringIO()
+                writer = csv.writer(buffer)
+                writer.writerow(
+                    ["call_id", "correlation_id", "start", "end", "duration_seconds"]
+                )
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+
+                for item in history:
+                    start_ts = item.get("start")
+                    end_ts = item.get("end")
+                    start_value = float(start_ts) if isinstance(start_ts, (int, float)) else None
+                    end_value = float(end_ts) if isinstance(end_ts, (int, float)) else None
+
+                    duration = None
+                    if start_value is not None:
+                        if end_value is not None:
+                            duration = end_value - start_value
+                        else:
+                            duration = now - start_value
+
+                    writer.writerow(
+                        [
+                            str(item.get("call_id", "")),
+                            str(item.get("correlation_id", "") or ""),
+                            format_timestamp(start_value),
+                            format_timestamp(end_value),
+                            f"{duration:.2f}" if duration is not None else "",
+                        ]
+                    )
+                    yield buffer.getvalue()
+                    buffer.seek(0)
+                    buffer.truncate(0)
+
+            return StreamingResponse(
+                csv_iter(),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": 'attachment; filename="call_history.csv"',
+                },
+            )
+
+        @self.app.get("/api/status")
+        async def api_status(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> Dict[str, Any]:
+            del session
+            return self._status_payload()
+
+        @self.app.get("/api/logs")
+        async def api_logs(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> Dict[str, Any]:
+            del session
+            return {"logs": list(self.logs)}
+
+        @self.app.get("/api/config")
+        async def api_config(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> Dict[str, str]:
+            del session
+            config_map = load_config()
+            response: Dict[str, str] = {}
+            for key in Monitor.CONFIG_KEYS:
+                value = config_map.get(key)
+                response[key] = "" if value is None else str(value)
+            return response
+
+        @self.app.websocket("/ws/events")
+        async def events_websocket(websocket: WebSocket) -> None:
+            session = self._get_session(websocket.cookies.get(self.session_cookie))
+            if not session:
+                await websocket.close(code=4401)
+                return
+            await websocket.accept()
+
+            queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(maxsize=200)
+            with self._event_lock:
+                self._event_subscribers.add(queue)
+
+            try:
+                await websocket.send_json({"type": "status", "payload": self._status_payload()})
+                await websocket.send_json({"type": "call_history", "payload": self._call_history_payload()})
+                await websocket.send_json({"type": "metrics", "payload": metrics.snapshot()})
+                await websocket.send_json({"type": "logs", "entries": list(self.logs)})
+                while True:
+                    event = await queue.get()
+                    await websocket.send_json(event)
+            except WebSocketDisconnect:  # pragma: no cover - lifecycle behaviour
+                pass
+            finally:
+                with self._event_lock:
+                    self._event_subscribers.discard(queue)
+
+        @self.app.get("/metrics")
+        async def api_metrics() -> Dict[str, Any]:
+            return metrics.snapshot()
+
+        @self.app.get("/healthz")
+        async def healthz() -> JSONResponse:
+            status_payload = self.health_status()
+            code = 200 if status_payload["status"] == "ok" else 503
+            return JSONResponse(status_payload, status_code=code)
+
+    # ------------------------------------------------------------------
+    # Safe reload handling
+
+    def request_safe_reload(self) -> Dict[str, Any]:
+        with self._reload_lock:
+            if self._reload_thread and self._reload_thread.is_alive():
+                status = self._reload_status
+                active_calls = len(self.active_calls)
+                payload: Dict[str, Any] = {
+                    "status": status,
+                    "active_calls": active_calls,
+                    "message": self._format_reload_message(status, active_calls),
+                }
+                if self._reload_error:
+                    payload["error"] = self._reload_error
+                return payload
+
+            status = "waiting_for_calls" if self.active_calls else "restarting"
+            self._reload_status = status
+            self._reload_error = None
+            thread = threading.Thread(target=self._safe_reload_worker, daemon=True)
+            self._reload_thread = thread
+            thread.start()
+            active_calls = len(self.active_calls)
+            return {
+                "status": status,
+                "active_calls": active_calls,
+                "message": self._format_reload_message(status, active_calls),
+            }
+
+    def _safe_reload_worker(self) -> None:
+        initial_active = len(self.active_calls)
+        self.add_log(
+            "Safe reload requested",
+            event="reload_requested",
+            active_calls=initial_active,
+        )
+        wait_logged = False
+        while True:
+            active = len(self.active_calls)
+            if active == 0:
+                break
+            if not wait_logged:
+                self.add_log(
+                    "Waiting for active calls to complete before restarting",
+                    event="reload_waiting",
+                    active_calls=active,
+                )
+                wait_logged = True
+            time.sleep(self._reload_poll_interval)
+        with self._reload_lock:
+            self._reload_status = "restarting"
+        self.add_log(
+            "Restarting agent process to apply new configuration",
+            event="reload_initiated",
+        )
+        if self._reload_restart_delay > 0:
+            time.sleep(self._reload_restart_delay)
+        try:
+            self._perform_process_restart()
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.add_log(
+                f"Safe reload failed: {exc}",
+                level="error",
+                event="reload_failed",
+                error=str(exc),
+            )
+            with self._reload_lock:
+                self._reload_status = "error"
+                self._reload_error = str(exc)
+                self._reload_thread = None
+        else:
+            with self._reload_lock:
+                self._reload_thread = None
+
+    def _perform_process_restart(self) -> None:
+        executable = sys.executable or "python3"
+        argv = [executable]
+        if sys.argv:
+            argv.extend(sys.argv)
+        else:
+            argv.append(str(Path(__file__).resolve().parent / "agent.py"))
+        os.execv(executable, argv)
+
+    def _format_reload_message(self, status: str, active_calls: int) -> str:
+        if status == "restarting":
+            return "Configuration saved. Agent will restart momentarily to apply changes."
+        if status == "waiting_for_calls":
+            if active_calls == 1:
+                return "Configuration saved. Restart will occur after the active call ends."
+            return f"Configuration saved. Restart will occur after {active_calls} active calls end."
+        if status == "error" and self._reload_error:
+            return f"Automatic restart failed: {self._reload_error}. Please restart manually."
+        if status == "noop":
+            return "No configuration changes detected."
+        return "Configuration saved."
+
+    # ------------------------------------------------------------------
+    # Agent integration
+
+    def update_registration(self, status: bool) -> None:
+        self.sip_registered = bool(status)
+        event = "Registered" if self.sip_registered else "Not Registered"
+        self.add_log(
+            f"SIP registration state changed: {event}",
+            event="sip_registration",
+            registered=self.sip_registered,
+        )
+        self._emit_status_event()
+        self._emit_metrics_event()
+
+    def add_call(self, call_id: str, correlation_id: Optional[str] = None) -> str:
+        correlation_id = correlation_id or generate_correlation_id()
+        with correlation_scope(correlation_id):
+            if call_id not in self.active_calls:
+                self.active_calls.append(call_id)
+            start_ts = time.time()
+            self._call_context[call_id] = {
+                "correlation_id": correlation_id,
+                "start": start_ts,
+            }
+            self.call_history.append(
+                {
+                    "call_id": call_id,
+                    "start": start_ts,
+                    "end": None,
+                    "correlation_id": correlation_id,
+                }
+            )
+            metrics.call_started(call_id, correlation_id)
+            self.add_log(
+                f"New call: {call_id}",
+                event="call_started",
+                call_id=call_id,
+            )
+        self._emit_status_event()
+        self._emit_metrics_event()
+        return correlation_id
+
+    def remove_call(self, call_id: str) -> None:
+        context = self._call_context.get(call_id, {})
+        correlation_id = cast(Optional[str], context.get("correlation_id"))
+        with correlation_scope(correlation_id):
+            if call_id in self.active_calls:
+                self.active_calls.remove(call_id)
+
+            duration = None
+            for item in reversed(self.call_history):
+                if item["call_id"] == call_id and item["end"] is None:
+                    item["end"] = time.time()
+                    duration = item["end"] - item["start"]
                     break
-            self.add_log(f"Call ended: {call_id}")
-    
-    def update_tokens(self, tokens):
-        self.api_tokens_used += tokens
-        self.add_log(f"API tokens used: +{tokens} (Total: {self.api_tokens_used})")
-    
-    def add_log(self, message):
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"[{timestamp}] {message}"
-        self.logs.append(log_entry)
-        print(log_entry)  # Also print to console
-        
-        # Keep logs at a reasonable size
-        if len(self.logs) > self.max_logs:
-            self.logs = self.logs[-self.max_logs:]
-    
-    def start(self):
-        # Start Flask in a separate thread
-        threading.Thread(target=self._run_server, daemon=True).start()
-        self.add_log("Monitoring server started on port 8080")
-    
-    def _run_server(self):
-        # Explicitly disable Flask's logging to keep console output clean
-        import logging as _logging
-        log = _logging.getLogger('werkzeug')
-        log.setLevel(_logging.ERROR)
-        self.app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
 
-# Singleton instance
+            metrics_duration = metrics.call_ended(call_id)
+            if duration is None:
+                duration = metrics_duration
+
+            if call_id in self._call_context:
+                self._call_context.pop(call_id, None)
+
+            log_fields: Dict[str, Any] = {"event": "call_ended", "call_id": call_id}
+            if duration is not None:
+                log_fields["duration_seconds"] = duration
+            self.add_log(f"Call ended: {call_id}", **log_fields)
+        self._emit_status_event()
+        self._emit_metrics_event()
+
+    def update_tokens(self, tokens: int, call_id: Optional[str] = None) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = cast(Optional[str], context.get("correlation_id")) if context else None
+        with correlation_scope(correlation_id):
+            self.api_tokens_used += tokens
+            metrics.record_token_usage(tokens)
+            log_fields: Dict[str, Any] = {
+                "event": "token_usage",
+                "tokens": tokens,
+                "total_tokens": self.api_tokens_used,
+            }
+            if call_id:
+                log_fields["call_id"] = call_id
+            self.add_log(
+                f"API tokens used: +{tokens} (Total: {self.api_tokens_used})",
+                **log_fields,
+            )
+        self._emit_status_event()
+        self._emit_metrics_event()
+
+    def update_realtime_ws(
+        self,
+        healthy: bool,
+        detail: Optional[str] = None,
+        call_id: Optional[str] = None,
+    ) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = cast(Optional[str], context.get("correlation_id")) if context else None
+        with correlation_scope(correlation_id):
+            self.realtime_ws_state = "healthy" if healthy else "unhealthy"
+            self.realtime_ws_detail = detail
+            self.realtime_ws_last_event = time.time()
+            metrics.record_audio_event("realtime_ws_healthy" if healthy else "realtime_ws_unhealthy")
+            log_fields: Dict[str, Any] = {
+                "event": "realtime_ws",
+                "healthy": healthy,
+            }
+            if call_id:
+                log_fields["call_id"] = call_id
+            if detail:
+                log_fields["detail"] = detail
+            self.add_log("Realtime WebSocket status updated", **log_fields)
+        self._emit_status_event()
+        self._emit_metrics_event()
+
+    def record_audio_event(self, name: str, call_id: Optional[str] = None, **fields: Any) -> None:
+        context = self._call_context.get(call_id) if call_id else None
+        correlation_id = cast(Optional[str], context.get("correlation_id")) if context else None
+        with correlation_scope(correlation_id):
+            metrics.record_audio_event(name)
+            log_fields: Dict[str, Any] = {
+                "event": "audio_pipeline",
+                "audio_event": name,
+            }
+            if call_id:
+                log_fields["call_id"] = call_id
+            log_fields.update(fields)
+            self.add_log(f"Audio pipeline event: {name}", **log_fields)
+        self._emit_metrics_event()
+
+    def add_log(self, message: str, level: str = "info", **fields: Any) -> None:
+        log_method = getattr(self.logger, level, self.logger.info)
+        log_method(message, extra=fields)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        level_upper = level.upper()
+        log_entry = f"[{timestamp}] [{level_upper}] {message}"
+        if fields:
+            try:
+                context_json = json.dumps(fields, default=str, sort_keys=True)
+            except TypeError:
+                context_json = json.dumps({k: str(v) for k, v in fields.items()}, sort_keys=True)
+            log_entry = f"{log_entry} {context_json}"
+        self.logs.append(log_entry)
+        if len(self.logs) > self.max_logs:
+            self.logs = self.logs[-self.max_logs :]
+        self._push_event({"type": "log", "entry": log_entry})
+
+    def health_status(self) -> Dict[str, Optional[object]]:
+        healthy = self.sip_registered and self.realtime_ws_state != "unhealthy"
+        return {
+            "status": "ok" if healthy else "degraded",
+            "sip_registered": self.sip_registered,
+            "realtime_ws_state": self.realtime_ws_state,
+            "realtime_ws_detail": self.realtime_ws_detail,
+            "active_calls": len(self.active_calls),
+            "last_ws_event_ts": self.realtime_ws_last_event,
+        }
+
+    def start(self) -> None:
+        if self._server_thread and self._server_thread.is_alive():
+            return
+        self._server_thread = threading.Thread(target=self._run_server, daemon=True)
+        self._server_thread.start()
+        self.add_log("Monitoring server started on port 8080", event="monitor_started")
+
+    def _run_server(self) -> None:  # pragma: no cover - network server loop
+        import logging
+
+        import uvicorn
+
+        logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+        logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        config = uvicorn.Config(
+            self.app,
+            host="0.0.0.0",
+            port=8080,
+            log_level="error",
+            lifespan="on",
+        )
+        server = uvicorn.Server(config)
+        loop.run_until_complete(server.serve())
+
+
 monitor = Monitor()

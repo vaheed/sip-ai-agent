@@ -1,4 +1,14 @@
-FROM python:3.9-slim
+FROM node:20 AS frontend-builder
+
+WORKDIR /frontend
+
+COPY web/package*.json ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+FROM python:3.9-slim AS backend
 
 WORKDIR /app
 
@@ -14,29 +24,18 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PJSIP and pjsua2
-RUN cd /tmp && \
-    wget https://github.com/pjsip/pjproject/archive/2.12.tar.gz && \
-    tar -xzf 2.12.tar.gz && \
-    cd pjproject-2.12 && \
-    ./configure --enable-shared && \
-    make dep && \
-    make && \
-    make install && \
-    ldconfig && \
-    cd pjsip-apps/src/swig && \
-    make python && \
-    cd python && \
-    python setup.py install
+# Install PJSIP and pjsua2 bindings using the helper script
+COPY scripts/install_pjsua2.py scripts/install_pjsua2.py
+RUN python scripts/install_pjsua2.py
 
 # Install other Python packages
 COPY requirements.txt .
-RUN sed -i '/pjsua2==2.12/d' requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt && \
+RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir "werkzeug<3.0.0" "flask<3.0.0"
 
 # Copy application code
-COPY app/ .
+COPY app/ ./
+COPY --from=frontend-builder /app/static/dashboard ./static/dashboard
 
 # Expose ports
 EXPOSE 8080
@@ -44,3 +43,10 @@ EXPOSE 5060/udp
 EXPOSE 16000-16100/udp
 
 CMD ["python", "agent.py"]
+
+FROM nginx:1.25-alpine AS dashboard
+
+COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=frontend-builder /app/static/dashboard /usr/share/nginx/html
+
+EXPOSE 80
