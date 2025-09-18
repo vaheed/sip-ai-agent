@@ -9,7 +9,6 @@ import base64
 import queue
 import contextlib
 from typing import Optional, TYPE_CHECKING
-from openai import OpenAI
 import pjsua2 as pj
 
 try:
@@ -184,8 +183,6 @@ class EndpointTimer(pj.TimerEntry):
     def onTimeout(self) -> None:  # pragma: no cover - invoked by PJSIP runtime
         self._callback()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY or None)
 
 # Audio callback class for PJSIP
 class AudioCallback(pj.AudioMedia):
