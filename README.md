@@ -182,29 +182,45 @@ a value is cleared the agent falls back to the safe defaults shown above.
    Ensure the required system packages (`build-essential`, `libpcap-dev`,
    `portaudio19-dev`, `python3-dev`, `swig`, etc.) are available on your host.
 
-4. **Build and start the container**
+4. **Build and start the containers**
 
    ```bash
    docker compose up --build
    ```
 
-   This pulls the dependencies, runs the shared installer for PJSIP and starts
-   the agent.  The container exposes the following ports:
+   This pulls the dependencies, runs the shared installer for PJSIP, compiles
+   the dashboard frontend and starts both services defined in the compose
+   file.  The stack exposes the following ports on the Docker host:
 
-   * `8080/tcp` — monitoring dashboard
-   * `5060/udp` — SIP signalling
-   * `16000–16100/udp` — RTP media
+   * `8080/tcp` — dashboard UI served by the `web` service (static assets + proxy)
+   * `5060/udp` — SIP signalling handled by the `sip-agent` service
+   * `16000–16100/udp` — RTP media relayed by the `sip-agent` service
 
 5. **Access the dashboard**
 
    Open your browser to `http://<docker-host>:8080`.  The home page shows the
    current registration state, active calls, token usage and a log view.
-   Visit `/dashboard` for an advanced dashboard with a configuration form and
-   call history.  Administrator authentication is required for the dashboard
-   and API routes; log in with the credentials defined by
-   `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` (default: `admin` / `admin`).
-   After editing and saving the configuration, restart the container for
+   Visit `/login` to authenticate with the credentials defined by
+   `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` (default: `admin` /
+   `admin`) and `/dashboard` for the full configuration and history view.
+   After editing and saving the configuration, restart the agent container for
    changes to take effect.
+
+### Docker services
+
+The Compose file now builds two images from the shared `Dockerfile`:
+
+* **`sip-agent`** (build target `backend`) installs Python dependencies, the
+  PJSIP stack and the FastAPI monitoring service.  It exposes the SIP and RTP
+  ports and listens on port 8080 internally for API, login and WebSocket
+  traffic.
+* **`web`** (build target `dashboard`) packages the React/Tailwind frontend
+  with Nginx.  Static files are served directly from Nginx while `/api`, `/ws`,
+  `/metrics`, `/healthz`, `/login` and `/logout` are proxied back to the
+  `sip-agent` container.
+
+Both services share the default Compose network so hostnames resolve within the
+stack (`web` proxies to `http://sip-agent:8080`).
 
 ## Dashboard
 
@@ -233,8 +249,9 @@ npm run dev
 ```
 
 For production builds run `npm run build`.  The compiled assets are emitted to
-`app/static/dashboard` and automatically served by the FastAPI application at
-`/dashboard`.
+`web/dist` and copied into both Docker images during the multi-stage build: the
+FastAPI application serves them from `app/static/dashboard` while the Nginx
+`web` image serves them directly at the container root.
 
 Set `MONITOR_SESSION_TTL` (seconds) to adjust how long administrator sessions
 remain valid.  The authentication cookie name defaults to `monitor_session` and
