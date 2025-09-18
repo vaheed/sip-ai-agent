@@ -200,8 +200,11 @@ a value is cleared the agent falls back to the safe defaults shown above.
    Open your browser to `http://<docker-host>:8080`.  The home page shows the
    current registration state, active calls, token usage and a log view.
    Visit `/dashboard` for an advanced dashboard with a configuration form and
-   call history.  After editing and saving the configuration, restart
-   the container for changes to take effect.
+   call history.  Administrator authentication is required for the dashboard
+   and API routes; log in with the credentials defined by
+   `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` (default: `admin` / `admin`).
+   After editing and saving the configuration, restart the container for
+   changes to take effect.
 
 ## Dashboard
 
@@ -210,12 +213,17 @@ agent:
 
 * **Status** — Shows whether the SIP account is registered, lists active
   calls and displays the total number of tokens used.
-* **Logs** — Streams recent log entries so you can watch events in real time.
+* **Logs** — Streams recent log entries via a WebSocket so you can watch events
+  in real time.
 * **Call history** — Lists each call’s start time, end time and duration,
   enabling you to visualise call flow.
 * **Configuration editor** — Presents the contents of your `.env` file in a
   form.  Update values and click save to write them back to disk.  A container
   restart is required to apply changes.
+
+Set `MONITOR_SESSION_TTL` (seconds) to adjust how long administrator sessions
+remain valid.  The authentication cookie name defaults to `monitor_session` and
+can be customised via `MONITOR_SESSION_COOKIE` if your deployment requires it.
 
 ## Operations and troubleshooting
 
