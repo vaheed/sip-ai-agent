@@ -2,11 +2,11 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { AdjustmentsHorizontalIcon, ArrowPathIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 
 import { CONFIG_KEYS, type ConfigKey } from '../constants'
-import type { ConfigMap } from '../types'
+import type { ConfigMap, ConfigUpdateResponse, ReloadStatus } from '../types'
 
 interface ConfigEditorProps {
   config: ConfigMap
-  onSave: (values: ConfigMap) => Promise<void>
+  onSave: (values: ConfigMap) => Promise<ConfigUpdateResponse>
 }
 
 const textareaKeys: ConfigKey[] = ['SYSTEM_PROMPT']
@@ -16,6 +16,7 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
   const [saving, setSaving] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [reloadStatus, setReloadStatus] = useState<ReloadStatus | null>(null)
 
   useEffect(() => {
     setFormValues(() => {
@@ -41,12 +42,28 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
     })
     setErrorMessage(null)
     setSuccessMessage(null)
+    setReloadStatus(null)
   }
 
   const hasChanges = useMemo(
     () => CONFIG_KEYS.some((key) => (config?.[key] ?? '') !== (formValues?.[key] ?? '')),
     [config, formValues],
   )
+
+  const reloadDetail = useMemo(() => {
+    if (!reloadStatus) {
+      return null
+    }
+    if (reloadStatus.status === 'waiting_for_calls') {
+      const count = reloadStatus.active_calls
+      const callText = count === 1 ? 'the active call ends' : `${count} active calls end`
+      return `The service will restart automatically after ${callText}.`
+    }
+    if (reloadStatus.status === 'restarting') {
+      return 'The service is restarting now. The dashboard may briefly disconnect.'
+    }
+    return null
+  }, [reloadStatus])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -57,11 +74,20 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
     setSaving(true)
     setErrorMessage(null)
     setSuccessMessage(null)
+    setReloadStatus(null)
     try {
-      await onSave(formValues)
-      setSuccessMessage('Configuration saved. Restart the service to apply changes.')
+      const response = await onSave(formValues)
+      setReloadStatus(response.reload ?? null)
+      if (response.reload?.status === 'error') {
+        setErrorMessage(response.reload?.message ?? 'Automatic restart failed. Please restart the service manually.')
+        setSuccessMessage(null)
+      } else {
+        const message = response.reload?.message ?? 'Configuration saved.'
+        setSuccessMessage(message)
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to save configuration')
+      setReloadStatus(null)
     } finally {
       setSaving(false)
     }
@@ -89,9 +115,18 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
         </div>
 
         {successMessage ? (
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
-            <CheckCircleIcon className="h-5 w-5" />
-            {successMessage}
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+            {reloadStatus?.status === 'restarting' ? (
+              <ArrowPathIcon className="mt-0.5 h-5 w-5 animate-spin" />
+            ) : (
+              <CheckCircleIcon className="mt-0.5 h-5 w-5" />
+            )}
+            <div className="space-y-1">
+              <p>{successMessage}</p>
+              {reloadDetail ? (
+                <p className="text-xs text-emerald-700/80 dark:text-emerald-200/80">{reloadDetail}</p>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {errorMessage ? (

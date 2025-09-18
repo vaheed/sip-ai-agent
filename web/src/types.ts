@@ -25,6 +25,20 @@ export interface MetricsSnapshot {
 
 export type ConfigMap = Record<string, string>
 
+export type ReloadState = 'restarting' | 'waiting_for_calls' | 'noop' | 'error'
+
+export interface ReloadStatus {
+  status: ReloadState
+  active_calls: number
+  message: string
+  error?: string
+}
+
+export interface ConfigUpdateResponse {
+  success: boolean
+  reload?: ReloadStatus | null
+}
+
 export type DashboardEvent =
   | { type: 'status'; payload: StatusPayload }
   | { type: 'call_history'; payload: CallHistoryItem[] }

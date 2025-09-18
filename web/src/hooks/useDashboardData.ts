@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CallHistoryItem,
   ConfigMap,
+  ConfigUpdateResponse,
   DashboardEvent,
   MetricsSnapshot,
   StatusPayload,
@@ -35,7 +36,7 @@ const fetchJson = async <T>(url: string): Promise<T> => {
   return response.json() as Promise<T>
 }
 
-const updateConfigRequest = async (payload: ConfigMap): Promise<void> => {
+const updateConfigRequest = async (payload: ConfigMap): Promise<ConfigUpdateResponse> => {
   const response = await fetch('/api/update_config', {
     method: 'POST',
     credentials: 'include',
@@ -50,11 +51,14 @@ const updateConfigRequest = async (payload: ConfigMap): Promise<void> => {
     throw new UnauthorizedError()
   }
 
-  const data = await response.json().catch(() => ({ success: response.ok }))
+  const data = (await response
+    .json()
+    .catch(() => ({ success: response.ok }))) as ConfigUpdateResponse
   if (!response.ok || !data.success) {
-    const detail = data?.error || response.statusText
+    const detail = (data as { error?: string })?.error || response.statusText
     throw new Error(detail || 'Failed to update configuration')
   }
+  return data
 }
 
 export interface DashboardData {
@@ -68,7 +72,7 @@ export interface DashboardData {
   error: string | null
   websocketState: 'connecting' | 'open' | 'retrying' | 'closed'
   refresh: () => Promise<void>
-  saveConfig: (values: ConfigMap) => Promise<void>
+  saveConfig: (values: ConfigMap) => Promise<ConfigUpdateResponse>
 }
 
 export const useDashboardData = (): DashboardData => {
@@ -149,8 +153,18 @@ export const useDashboardData = (): DashboardData => {
   const saveConfig = useCallback(
     async (values: ConfigMap) => {
       try {
-        await updateConfigRequest(values)
-        await refresh()
+        const result = await updateConfigRequest(values)
+        if (result.reload?.status !== 'restarting') {
+          try {
+            await refresh()
+          } catch (refreshErr) {
+            if (handleUnauthorized(refreshErr)) {
+              throw refreshErr
+            }
+            console.warn('Failed to refresh dashboard after saving config', refreshErr)
+          }
+        }
+        return result
       } catch (err) {
         if (handleUnauthorized(err)) {
           throw err
