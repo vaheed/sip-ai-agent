@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 # Copy application code
 COPY app/ ./
-COPY --from=frontend-builder /frontend/dist ./static/dashboard
+COPY --from=frontend-builder /app/static/dashboard ./static/dashboard
 
 # Expose ports
 EXPOSE 8080
@@ -47,6 +47,6 @@ CMD ["python", "agent.py"]
 FROM nginx:1.25-alpine AS dashboard
 
 COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
+COPY --from=frontend-builder /app/static/dashboard /usr/share/nginx/html
 
 EXPOSE 80
