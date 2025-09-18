@@ -1,5 +1,6 @@
 services:
   sip-agent:
+    image: "${IMAGE_REGISTRY:-ghcr.io/vaheed/sip-ai-agent-backend}:${IMAGE_TAG:-latest}"
     build:
       context: .
       dockerfile: Dockerfile

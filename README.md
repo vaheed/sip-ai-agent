@@ -92,6 +92,32 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
    * `5060/udp` — SIP signalling
    * `16000–16100/udp` — RTP media
 
+## Building a commit-tagged container image
+
+Security and compliance tooling in this project expects a Docker image tagged
+with the current Git commit to be available locally as
+`ghcr.io/vaheed/sip-ai-agent-backend:sha-<commit>`.  The helper script
+[`scripts/build-image.sh`](scripts/build-image.sh) automates this by building
+the Dockerfile and tagging the result with both the commit SHA and `latest`.
+Run it from the repository root whenever you need a fresh image:
+
+```bash
+./scripts/build-image.sh
+```
+
+By default the image is tagged under `ghcr.io/vaheed/sip-ai-agent-backend` and
+uses the repository's current commit.  You can override these defaults by
+setting environment variables before invoking the script:
+
+```bash
+IMAGE_REGISTRY=my-registry.example.com/sip-agent \
+LATEST_TAG=dev ./scripts/build-image.sh abcd1234
+```
+
+After running the script the `sha-<commit>` tag will be available locally so
+tools such as Trivy can generate a SARIF report without attempting to pull the
+image from GHCR.
+
 4. **Access the dashboard**
 
    Open your browser to `http://<docker-host>:8080`.  The home page shows the
