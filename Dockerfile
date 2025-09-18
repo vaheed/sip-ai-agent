@@ -14,25 +14,13 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PJSIP and pjsua2
-RUN cd /tmp && \
-    wget https://github.com/pjsip/pjproject/archive/2.12.tar.gz && \
-    tar -xzf 2.12.tar.gz && \
-    cd pjproject-2.12 && \
-    ./configure --enable-shared && \
-    make dep && \
-    make && \
-    make install && \
-    ldconfig && \
-    cd pjsip-apps/src/swig && \
-    make python && \
-    cd python && \
-    python setup.py install
+# Install PJSIP and pjsua2 bindings using the helper script
+COPY scripts/install_pjsua2.py scripts/install_pjsua2.py
+RUN python scripts/install_pjsua2.py
 
 # Install other Python packages
 COPY requirements.txt .
-RUN sed -i '/pjsua2==2.12/d' requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt && \
+RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir "werkzeug<3.0.0" "flask<3.0.0"
 
 # Copy application code

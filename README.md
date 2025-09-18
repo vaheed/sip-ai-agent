@@ -163,20 +163,39 @@ increase jitter buffers for choppy links or prioritise wideband codecs.  The
 monitoring dashboard exposes every field so you can experiment at runtime; when
 a value is cleared the agent falls back to the safe defaults shown above.
 
-3. **Build and start the container**
+3. **Install dependencies for local development (optional)**
+
+   To run the agent directly on your machine (or in CI) install the Python
+   requirements and then invoke the helper script that builds the PJSIP
+   libraries and `pjsua2` bindings:
+
+   ```bash
+   pip install -r requirements.txt
+   python scripts/install_pjsua2.py
+   # or use the bundled make target
+   make install
+   ```
+
+   The installer downloads `pjproject` 2.12, compiles it with
+   `--enable-shared`, builds the `pjsua2` Python module and installs it into
+   the active interpreter—the same sequence executed inside the Docker image.
+   Ensure the required system packages (`build-essential`, `libpcap-dev`,
+   `portaudio19-dev`, `python3-dev`, `swig`, etc.) are available on your host.
+
+4. **Build and start the container**
 
    ```bash
    docker compose up --build
    ```
 
-   This pulls the dependencies, builds PJSIP and starts the agent.  The
-   container exposes the following ports:
+   This pulls the dependencies, runs the shared installer for PJSIP and starts
+   the agent.  The container exposes the following ports:
 
    * `8080/tcp` — monitoring dashboard
    * `5060/udp` — SIP signalling
    * `16000–16100/udp` — RTP media
 
-4. **Access the dashboard**
+5. **Access the dashboard**
 
    Open your browser to `http://<docker-host>:8080`.  The home page shows the
    current registration state, active calls, token usage and a log view.

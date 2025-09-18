@@ -3,7 +3,12 @@ PIP ?= $(PYTHON) -m pip
 ENV_FILE ?= .env
 ENV_EXAMPLE ?= env.example
 
-.PHONY: dev lint type test format pre-commit env-validate env-sample
+.PHONY: install dev lint type test format pre-commit env-validate env-sample
+
+install:
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+	$(PYTHON) scripts/install_pjsua2.py
 
 dev:
 	$(PIP) install --upgrade pip
