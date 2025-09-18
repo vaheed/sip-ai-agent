@@ -45,8 +45,8 @@ guide](https://platform.openai.com/docs/guides/realtime_api).
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/your‑org/openai‑sip‑agent.git
-   cd openai‑sip‑agent
+   git clone https://github.com/openai/sip-ai-agent.git
+   cd sip-ai-agent
    ```
 
 2. **Configure the environment**
