@@ -597,8 +597,8 @@ class Call(pj.Call):
         The legacy API expects raw 16‑bit PCM audio frames and returns
         synthesized audio as bytes. This method maintains backwards
         compatibility for environments where the newer Realtime API is not yet
-        available. See OpenAI's voice documentation for details on the
-        parameters used here【214777425731610†L286-L314】.
+        available. Refer to the OpenAI voice API documentation for details on
+        the configuration parameters used here.
         """
         call_id = self.call_label()
         ws_url = "wss://api.openai.com/v1/audio/speech"
@@ -668,8 +668,8 @@ class Call(pj.Call):
         requires sending JSON messages with base64‑encoded audio. When
         connected, we immediately send a session.update message to configure
         the model, voice, audio formats and system instructions. The session
-        remains active for the duration of the call. See the OpenAI
-        Realtime API guide and examples【214777425731610†L286-L314】.
+        remains active for the duration of the call. Consult the OpenAI
+        Realtime API guide for the full set of options and examples.
         """
         # Compose the query string with model, voice and temperature. These
         # parameters are documented in the realtime API. Additional query
@@ -809,8 +809,8 @@ class Call(pj.Call):
         """
         Send audio from the SIP call to the Realtime API. Audio frames are
         base64 encoded and wrapped in a JSON envelope with type
-        "input_audio_buffer.append" as required by the Realtime API【826943400076790†L230-L249】. Token usage
-        estimation is also updated.
+        "input_audio_buffer.append" as required by the Realtime API
+        specification. Token usage estimation is also updated.
         """
         if not self.audio_callback:
             return
