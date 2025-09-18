@@ -10,9 +10,10 @@ both the legacy `/v1/audio/speech` WebSocket API and the newer realtime API
 for ultra‑low‑latency speech‑to‑speech interactions.  When `OPENAI_MODE` is
 set to `realtime`, audio from the caller is streamed directly to OpenAI and
 responses are streamed back as audio deltas, eliminating the need to convert
-speech to text and back and dramatically reducing latency【878443186554662†L53-L66】.  The
-realtime API also introduces new voices such as **Cedar** and **Marin** which
-provide a more natural and expressive sound【214777425731610†L286-L314】.
+speech to text and back and dramatically reducing latency.  The realtime API
+also introduces new voices such as **Cedar** and **Marin**, providing a more
+natural and expressive sound as documented in the [OpenAI realtime API
+guide](https://platform.openai.com/docs/guides/realtime_api).
 
 ### Features
 
@@ -21,7 +22,7 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
 * **Realtime API support** for low‑latency speech‑to‑speech conversations.
   The agent sends a `session.update` message on connection specifying the
   model, voice, audio formats and system instructions as recommended in
-  OpenAI’s documentation【826943400076790†L230-L249】.
+  [OpenAI’s realtime API guide](https://platform.openai.com/docs/guides/realtime_api).
 * **Asynchronous architecture** using `asyncio` for efficient audio and
   WebSocket handling.
 * **Web dashboard** displaying SIP registration state, active calls, token
@@ -36,7 +37,8 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
   for the agent.
 * Docker and Docker Compose.
 * An OpenAI API key.  If you plan to use the realtime API, ensure your
-  key has access to the `gpt‑realtime` model【214777425731610†L286-L314】.
+  key has access to the `gpt‑realtime` model; see the [OpenAI model
+  reference](https://platform.openai.com/docs/models).
 
 ## Installation
 
@@ -103,8 +105,9 @@ provide a more natural and expressive sound【214777425731610†L286-L314】.
 
    When using realtime mode the agent sends a `session.update` message to
    OpenAI containing the model, voice, audio format (16‑bit PCM at 16 kHz)
-   and system prompt【826943400076790†L230-L249】.  This ensures the session is
-   configured correctly before audio streaming begins.
+   and system prompt, as described in the [OpenAI realtime API
+   guide](https://platform.openai.com/docs/guides/realtime_api).  This ensures
+   the session is configured correctly before audio streaming begins.
 
 ### Advanced SIP configuration
 
