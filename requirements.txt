@@ -1,5 +1,5 @@
 # SIP client dependencies
-pyaudio==0.2.13
+pyaudio==0.2.14
 pydub==0.25.1
 websockets==11.0.3
 
