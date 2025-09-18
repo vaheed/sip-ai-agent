@@ -10,6 +10,7 @@ import os
 import secrets
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
 
 from fastapi import (
@@ -22,7 +23,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 try:
     from .config import (
@@ -123,6 +124,22 @@ class Monitor:
     def __init__(self) -> None:
         self.app = FastAPI(title="SIP AI Agent Monitor")
         self.logger = get_logger(__name__)
+
+        dashboard_dir_env = os.getenv("MONITOR_DASHBOARD_DIR")
+        self.dashboard_dir: Path
+        if dashboard_dir_env:
+            self.dashboard_dir = Path(dashboard_dir_env).expanduser().resolve()
+        else:
+            default_candidates = [
+                Path(__file__).resolve().parent / "static" / "dashboard",
+                Path(__file__).resolve().parent.parent / "web" / "dist",
+            ]
+            for candidate in default_candidates:
+                if candidate.exists():
+                    self.dashboard_dir = candidate.resolve()
+                    break
+            else:
+                self.dashboard_dir = default_candidates[0].resolve()
 
         # Agent state
         self.sip_registered = False
@@ -395,6 +412,7 @@ class Monitor:
             return response
 
         @self.app.get("/dashboard", response_class=HTMLResponse)
+        @self.app.get("/dashboard/", response_class=HTMLResponse)
         async def dashboard(request: Request) -> Response:
             if not self._get_session(request.cookies.get(self.session_cookie)):
                 return RedirectResponse(
@@ -402,171 +420,44 @@ class Monitor:
                     status_code=status.HTTP_303_SEE_OTHER,
                 )
 
-            config = load_config()
-            config_fields: List[str] = []
-            for key in Monitor.CONFIG_KEYS:
-                value = config.get(key, "")
-                safe_value = (
-                    str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+            index_file = self.dashboard_dir / "index.html"
+            if index_file.exists():
+                try:
+                    html = index_file.read_text(encoding="utf-8")
+                except OSError as exc:  # pragma: no cover - filesystem failure
+                    self.logger.error("Unable to read dashboard index", extra={"error": str(exc)})
+                else:
+                    return HTMLResponse(html)
+
+            message = """<!DOCTYPE html>
+<html>
+<head><title>Dashboard assets missing</title></head>
+<body>
+<h1>Dashboard assets unavailable</h1>
+<p>The React dashboard has not been built. Run <code>npm run build</code> inside the <code>web/</code> directory to generate static assets.</p>
+</body>
+</html>"""
+            return HTMLResponse(message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        @self.app.get("/dashboard/{asset_path:path}")
+        async def dashboard_assets(asset_path: str, request: Request) -> Response:
+            if not self._get_session(request.cookies.get(self.session_cookie)):
+                return RedirectResponse(
+                    f"/login?next={request.url.path}",
+                    status_code=status.HTTP_303_SEE_OTHER,
                 )
-                config_fields.append(
-                    f'<label for="{key}">{key}</label>'
-                    f'<input type="text" id="{key}" name="{key}" value="{safe_value}" style="width:100%"/><br/>'
-                )
-            config_form = "\n".join(config_fields)
-            return HTMLResponse(
-                """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>AI Agent Dashboard</title>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; line-height: 1.5; }
-                        .container { max-width: 1200px; margin: 0 auto; }
-                        .card { background: #f9f9f9; border-radius: 5px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                        table { width: 100%; border-collapse: collapse; }
-                        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-                        .logs { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; height: 300px; overflow-y: auto; font-family: monospace; }
-                        input[type="text"] { padding: 8px; margin-bottom: 10px; border-radius: 3px; border: 1px solid #ccc; }
-                        button { padding: 10px 20px; background-color: #4CAF50; color: #fff; border: none; border-radius: 3px; cursor: pointer; }
-                        button:hover { background-color: #45a049; }
-                        .actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="actions">
-                            <h1>AI Agent Dashboard</h1>
-                            <form method="post" action="/logout">
-                                <button type="submit">Logout</button>
-                            </form>
-                        </div>
-                        <div class="card">
-                            <h2>Configuration</h2>
-                            <form id="configForm" method="post" action="/api/update_config">
-                """
-                + config_form
-                + """
-                                <button type="submit">Save</button>
-                            </form>
-                            <p><small>After saving, restart the container to apply changes.</small></p>
-                        </div>
-                        <div class="card">
-                            <h2>Status</h2>
-                            <p id="registrationStatus">Loading...</p>
-                            <p id="activeCalls">Loading...</p>
-                            <p id="tokenUsage">Loading...</p>
-                            <p id="realtimeStatus">Loading...</p>
-                        </div>
-                        <div class="card">
-                            <h2>Call History</h2>
-                            <table id="callHistoryTable">
-                                <thead><tr><th>Call ID</th><th>Start</th><th>End</th><th>Duration</th></tr></thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                        <div class="card">
-                            <h2>Logs</h2>
-                            <div class="logs" id="logContainer"></div>
-                        </div>
-                    </div>
-                    <script>
-                    async function fetchData() {
-                        try {
-                            const [statusRes, logsRes, historyRes] = await Promise.all([
-                                fetch('/api/status'),
-                                fetch('/api/logs'),
-                                fetch('/api/call_history')
-                            ]);
-                            if (statusRes.status === 401 || logsRes.status === 401 || historyRes.status === 401) {
-                                window.location.href = '/login?next=/dashboard';
-                                return;
-                            }
-                            const status = await statusRes.json();
-                            const logsData = await logsRes.json();
-                            const history = await historyRes.json();
-                            updateStatus(status);
-                            renderLogs(logsData.logs || []);
-                            renderHistory(history);
-                        } catch (e) {
-                            console.error('Error fetching data', e);
-                        }
-                    }
 
-                    function updateStatus(status) {
-                        document.getElementById('registrationStatus').textContent = status.sip_registered ? 'SIP Registered' : 'SIP Not Registered';
-                        document.getElementById('activeCalls').textContent = 'Active calls: ' + (status.active_calls && status.active_calls.length ? status.active_calls.join(', ') : 'None');
-                        document.getElementById('tokenUsage').textContent = 'Tokens used: ' + status.api_tokens_used;
-                        const realtime = status.realtime_ws_state || 'unknown';
-                        const detail = status.realtime_ws_detail ? ' (' + status.realtime_ws_detail + ')' : '';
-                        document.getElementById('realtimeStatus').textContent = 'Realtime WS: ' + realtime + detail;
-                    }
+            safe_root = self.dashboard_dir
+            file_path = (safe_root / asset_path).resolve()
+            try:
+                file_path.relative_to(safe_root)
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-                    function renderLogs(logs) {
-                        const container = document.getElementById('logContainer');
-                        container.innerHTML = logs.map(l => '<div>' + l + '</div>').join('');
-                        container.scrollTop = container.scrollHeight;
-                    }
+            if not file_path.is_file():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-                    function appendLog(entry) {
-                        const container = document.getElementById('logContainer');
-                        container.innerHTML += '<div>' + entry + '</div>';
-                        container.scrollTop = container.scrollHeight;
-                    }
-
-                    function renderHistory(history) {
-                        const tbody = document.querySelector('#callHistoryTable tbody');
-                        tbody.innerHTML = '';
-                        history.forEach(item => {
-                            const start = new Date(item.start * 1000).toLocaleString();
-                            const end = item.end ? new Date(item.end * 1000).toLocaleString() : '-';
-                            const duration = item.end ? ((item.end - item.start).toFixed(1) + 's') : '-';
-                            const row = '<tr><td>' + item.call_id + '</td><td>' + start + '</td><td>' + end + '</td><td>' + duration + '</td></tr>';
-                            tbody.innerHTML += row;
-                        });
-                    }
-
-                    function connectWebSocket() {
-                        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-                        const socket = new WebSocket(protocol + window.location.host + '/ws/events');
-                        socket.onmessage = (event) => {
-                            try {
-                                const data = JSON.parse(event.data);
-                                if (!data.type) {
-                                    return;
-                                }
-                                if (data.type === 'log') {
-                                    appendLog(data.entry);
-                                } else if (data.type === 'status') {
-                                    updateStatus(data.payload);
-                                } else if (data.type === 'call_history') {
-                                    renderHistory(data.payload);
-                                } else if (data.type === 'logs' && data.entries) {
-                                    renderLogs(data.entries);
-                                }
-                            } catch (err) {
-                                console.error('Invalid websocket message', err);
-                            }
-                        };
-                        socket.onclose = (event) => {
-                            if (event.code === 4401 || event.code === 1008) {
-                                window.location.href = '/login?next=/dashboard';
-                                return;
-                            }
-                            setTimeout(connectWebSocket, 3000);
-                        };
-                    }
-
-                    window.onload = () => {
-                        fetchData();
-                        connectWebSocket();
-                    };
-                    </script>
-                </body>
-                </html>
-                """,
-            )
+            return FileResponse(file_path)
 
         @self.app.post("/api/update_config")
         async def api_update_config(
@@ -637,6 +528,18 @@ class Monitor:
         ) -> Dict[str, Any]:
             del session
             return {"logs": list(self.logs)}
+
+        @self.app.get("/api/config")
+        async def api_config(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> Dict[str, str]:
+            del session
+            config_map = load_config()
+            response: Dict[str, str] = {}
+            for key in Monitor.CONFIG_KEYS:
+                value = config_map.get(key)
+                response[key] = "" if value is None else str(value)
+            return response
 
         @self.app.websocket("/ws/events")
         async def events_websocket(websocket: WebSocket) -> None:

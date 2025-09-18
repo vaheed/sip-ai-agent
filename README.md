@@ -221,6 +221,21 @@ agent:
   form.  Update values and click save to write them back to disk.  A container
   restart is required to apply changes.
 
+### Frontend development
+
+The dashboard UI lives in [`web/`](web/) and is implemented with React, Vite
+and Tailwind CSS.  During development you can run the Vite dev server:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+For production builds run `npm run build`.  The compiled assets are emitted to
+`app/static/dashboard` and automatically served by the FastAPI application at
+`/dashboard`.
+
 Set `MONITOR_SESSION_TTL` (seconds) to adjust how long administrator sessions
 remain valid.  The authentication cookie name defaults to `monitor_session` and
 can be customised via `MONITOR_SESSION_COOKIE` if your deployment requires it.
