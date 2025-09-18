@@ -312,7 +312,7 @@ jobs:
         id: meta_dashboard
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/sip-ai-agent-dashboard:latest
+          images: ghcr.io/${{ github.repository_owner }}/sip-ai-agent-dashboard
           tags: |
             type=sha
             type=ref,event=tag
