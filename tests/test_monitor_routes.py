@@ -31,20 +31,20 @@ def _login(client: TestClient, username: str = "admin", password: str = "admin")
     response = client.post(
         "/login",
         data={"username": username, "password": password, "next": "/dashboard"},
-        allow_redirects=False,
+        follow_redirects=False,
     )
     assert response.status_code == 303
 
 
 def test_login_logout_and_dashboard_protection(client: TestClient, monitor: Monitor) -> None:
-    response = client.get("/dashboard", allow_redirects=False)
+    response = client.get("/dashboard", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/login")
 
     invalid = client.post(
         "/login",
         data={"username": "wrong", "password": "bad", "next": "/dashboard"},
-        allow_redirects=False,
+        follow_redirects=False,
     )
     assert invalid.status_code == 200
     assert "Invalid username or password" in invalid.text
@@ -52,15 +52,15 @@ def test_login_logout_and_dashboard_protection(client: TestClient, monitor: Moni
     _login(client)
     assert monitor.session_cookie in client.cookies
 
-    dashboard = client.get("/dashboard", allow_redirects=False)
+    dashboard = client.get("/dashboard", follow_redirects=False)
     assert dashboard.status_code == 503
     assert "Dashboard assets unavailable" in dashboard.text
 
-    logout = client.post("/logout", allow_redirects=False)
+    logout = client.post("/logout", follow_redirects=False)
     assert logout.status_code == 303
     assert logout.headers["location"] == "/login"
 
-    follow_up = client.get("/dashboard", allow_redirects=False)
+    follow_up = client.get("/dashboard", follow_redirects=False)
     assert follow_up.status_code == 303
     assert follow_up.headers["location"].startswith("/login")
 
