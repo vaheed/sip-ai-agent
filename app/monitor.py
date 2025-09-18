@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import hmac
 import json
 import os
@@ -11,8 +13,9 @@ import sys
 import secrets
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, cast
+from typing import Any, Dict, Iterable, List, Optional, Set, cast
 
 from fastapi import (
     Depends,
@@ -24,7 +27,13 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 
 try:
     from .config import (
@@ -531,6 +540,64 @@ class Monitor:
         ) -> List[Dict[str, Any]]:
             del session
             return self._call_history_payload()
+
+        @self.app.get("/api/call_history.csv")
+        async def api_call_history_csv(
+            session: Dict[str, Any] = Depends(_admin_dependency),
+        ) -> StreamingResponse:
+            del session
+
+            history = self._call_history_payload()
+            now = time.time()
+
+            def format_timestamp(value: Any) -> str:
+                if not isinstance(value, (int, float)):
+                    return ""
+                return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+
+            def csv_iter() -> Iterable[str]:
+                buffer = io.StringIO()
+                writer = csv.writer(buffer)
+                writer.writerow(
+                    ["call_id", "correlation_id", "start", "end", "duration_seconds"]
+                )
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+
+                for item in history:
+                    start_ts = item.get("start")
+                    end_ts = item.get("end")
+                    start_value = float(start_ts) if isinstance(start_ts, (int, float)) else None
+                    end_value = float(end_ts) if isinstance(end_ts, (int, float)) else None
+
+                    duration = None
+                    if start_value is not None:
+                        if end_value is not None:
+                            duration = end_value - start_value
+                        else:
+                            duration = now - start_value
+
+                    writer.writerow(
+                        [
+                            str(item.get("call_id", "")),
+                            str(item.get("correlation_id", "") or ""),
+                            format_timestamp(start_value),
+                            format_timestamp(end_value),
+                            f"{duration:.2f}" if duration is not None else "",
+                        ]
+                    )
+                    yield buffer.getvalue()
+                    buffer.seek(0)
+                    buffer.truncate(0)
+
+            return StreamingResponse(
+                csv_iter(),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": 'attachment; filename="call_history.csv"',
+                },
+            )
 
         @self.app.get("/api/status")
         async def api_status(
