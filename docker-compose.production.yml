@@ -1,0 +1,19 @@
+services:
+  sip-agent:
+    image: ${SIP_AGENT_IMAGE:-ghcr.io/openai/sip-ai-agent-backend:latest}
+    container_name: sip-ai-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5060:5060/udp"
+      - "16000-16100:16000-16100/udp"
+
+  web:
+    image: ${SIP_DASHBOARD_IMAGE:-ghcr.io/openai/sip-ai-agent-dashboard:latest}
+    container_name: sip-ai-dashboard
+    depends_on:
+      - sip-agent
+    restart: unless-stopped
+    ports:
+      - "8080:80"

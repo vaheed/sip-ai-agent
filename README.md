@@ -199,6 +199,19 @@ a value is cleared the agent falls back to the safe defaults shown above.
    * `5060/udp` — SIP signalling handled by the `sip-agent` service
    * `16000–16100/udp` — RTP media relayed by the `sip-agent` service
 
+   To reuse the published images from the GitHub Container Registry instead of
+   building locally, run the production compose file:
+
+   ```bash
+   docker compose -f docker-compose.production.yml up -d
+   ```
+
+   By default this pulls `ghcr.io/openai/sip-ai-agent-backend:latest` for the
+   agent and `ghcr.io/openai/sip-ai-agent-dashboard:latest` for the dashboard.
+   Override the images by exporting `SIP_AGENT_IMAGE` or
+   `SIP_DASHBOARD_IMAGE` before running the command if you want to pin a
+   specific tag.
+
 5. **Access the dashboard**
 
    Open your browser to `http://<docker-host>:8080`.  The home page shows the

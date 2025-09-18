@@ -52,6 +52,7 @@ jobs:
             docker:
               - 'Dockerfile'
               - 'docker-compose.yml'
+              - 'docker-compose.production.yml'
               - 'deploy/**'
             workflow:
               - '.github/workflows/**'
