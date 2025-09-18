@@ -47,10 +47,12 @@ If you encounter unexpected behaviour or a defect:
    * Follow [PEP 8](https://peps.python.org/pep-0008/) for Python code style.
    * Document new functions, classes and modules with docstrings.
    * Add error handling for edge cases.
-   * Write tests where possible; although this project currently lacks a full
-     test suite, contributions that include tests are appreciated.
+   * Extend the existing `pytest` suite when you introduce new behaviour.  The
+     current tests in `tests/` (for example `tests/test_audio_pipeline.py` and
+     `tests/test_config.py`) illustrate the expected coverage level.
 
-4. **Run the automated checks** before submitting your changes:
+4. **Run the automated checks** before submitting your changes (in particular,
+   ensure `make test` passes locally):
 
    ```bash
    make lint
@@ -60,7 +62,9 @@ If you encounter unexpected behaviour or a defect:
    ```
 
    The lint target runs `ruff check`, the type target executes `mypy` with
-   `mypy.ini`, and the test target runs the `pytest` suite.
+   `mypy.ini`, and the test target runs the `pytest` suite.  Submissions should
+   only be made once these commands—especially `make test`—complete
+   successfully.
 
 5. **Commit your changes** with clear messages:
 
