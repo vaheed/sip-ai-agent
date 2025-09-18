@@ -7,6 +7,7 @@ import asyncio
 import hmac
 import json
 import os
+import sys
 import secrets
 import threading
 import time
@@ -167,6 +168,14 @@ class Monitor:
         self._event_lock = threading.Lock()
 
         self._server_thread: Optional[threading.Thread] = None
+
+        # Safe reload tracking
+        self._reload_thread: Optional[threading.Thread] = None
+        self._reload_lock = threading.Lock()
+        self._reload_status: str = "idle"
+        self._reload_error: Optional[str] = None
+        self._reload_poll_interval = 1.0
+        self._reload_restart_delay = 0.5
 
         self.setup_routes()
 
@@ -479,6 +488,7 @@ class Monitor:
                         value = form.get(key)
                         if value is not None:
                             new_config[key] = str(value)
+                reload_status: Optional[Dict[str, Any]] = None
                 if new_config:
                     save_config(new_config)
                     self.add_log(
@@ -486,7 +496,14 @@ class Monitor:
                         event="configuration_updated",
                         keys=list(new_config.keys()),
                     )
-                return JSONResponse({"success": True})
+                    reload_status = self.request_safe_reload()
+                else:
+                    reload_status = {
+                        "status": "noop",
+                        "active_calls": len(self.active_calls),
+                        "message": self._format_reload_message("noop", len(self.active_calls)),
+                    }
+                return JSONResponse({"success": True, "reload": reload_status})
             except ConfigurationError as err:
                 self.add_log(
                     f"Configuration validation error: {err}",
@@ -576,6 +593,103 @@ class Monitor:
             status_payload = self.health_status()
             code = 200 if status_payload["status"] == "ok" else 503
             return JSONResponse(status_payload, status_code=code)
+
+    # ------------------------------------------------------------------
+    # Safe reload handling
+
+    def request_safe_reload(self) -> Dict[str, Any]:
+        with self._reload_lock:
+            if self._reload_thread and self._reload_thread.is_alive():
+                status = self._reload_status
+                active_calls = len(self.active_calls)
+                payload: Dict[str, Any] = {
+                    "status": status,
+                    "active_calls": active_calls,
+                    "message": self._format_reload_message(status, active_calls),
+                }
+                if self._reload_error:
+                    payload["error"] = self._reload_error
+                return payload
+
+            status = "waiting_for_calls" if self.active_calls else "restarting"
+            self._reload_status = status
+            self._reload_error = None
+            thread = threading.Thread(target=self._safe_reload_worker, daemon=True)
+            self._reload_thread = thread
+            thread.start()
+            active_calls = len(self.active_calls)
+            return {
+                "status": status,
+                "active_calls": active_calls,
+                "message": self._format_reload_message(status, active_calls),
+            }
+
+    def _safe_reload_worker(self) -> None:
+        initial_active = len(self.active_calls)
+        self.add_log(
+            "Safe reload requested",
+            event="reload_requested",
+            active_calls=initial_active,
+        )
+        wait_logged = False
+        while True:
+            active = len(self.active_calls)
+            if active == 0:
+                break
+            if not wait_logged:
+                self.add_log(
+                    "Waiting for active calls to complete before restarting",
+                    event="reload_waiting",
+                    active_calls=active,
+                )
+                wait_logged = True
+            time.sleep(self._reload_poll_interval)
+        with self._reload_lock:
+            self._reload_status = "restarting"
+        self.add_log(
+            "Restarting agent process to apply new configuration",
+            event="reload_initiated",
+        )
+        if self._reload_restart_delay > 0:
+            time.sleep(self._reload_restart_delay)
+        try:
+            self._perform_process_restart()
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.add_log(
+                f"Safe reload failed: {exc}",
+                level="error",
+                event="reload_failed",
+                error=str(exc),
+            )
+            with self._reload_lock:
+                self._reload_status = "error"
+                self._reload_error = str(exc)
+                self._reload_thread = None
+        else:
+            with self._reload_lock:
+                self._reload_thread = None
+
+    def _perform_process_restart(self) -> None:
+        executable = sys.executable or "python3"
+        argv = [executable]
+        if sys.argv:
+            argv.extend(sys.argv)
+        else:
+            argv.append(str(Path(__file__).resolve().parent / "agent.py"))
+        os.execv(executable, argv)
+
+    def _format_reload_message(self, status: str, active_calls: int) -> str:
+        if status == "restarting":
+            return "Configuration saved. Agent will restart momentarily to apply changes."
+        if status == "waiting_for_calls":
+            if active_calls == 1:
+                return "Configuration saved. Restart will occur after the active call ends."
+            return f"Configuration saved. Restart will occur after {active_calls} active calls end."
+        if status == "error" and self._reload_error:
+            return f"Automatic restart failed: {self._reload_error}. Please restart manually."
+        if status == "noop":
+            return "No configuration changes detected."
+        return "Configuration saved."
 
     # ------------------------------------------------------------------
     # Agent integration
