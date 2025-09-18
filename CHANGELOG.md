@@ -36,8 +36,9 @@ are given in UTC.
   switch between the legacy `/v1/audio/speech` API and OpenAI’s new
   realtime API.  The realtime API streams audio in both directions and
   eliminates the latency associated with converting speech to text and back
-  again【878443186554662†L53-L66】.  Support for new voices like Cedar and Marin
-  was added【214777425731610†L286-L314】.
+  again.  Support for new voices like Cedar and Marin was added to provide
+  more natural call experiences, in line with the [OpenAI realtime API
+  guide](https://platform.openai.com/docs/guides/realtime_api).
 * **Asynchronous audio handling.**  Refactored the agent to use
   `asyncio` for WebSocket and audio streaming, improving performance.
 * **Monitoring server.**  Added a simple Flask monitor to display SIP
