@@ -55,9 +55,9 @@ afterEach(() => {
 
 describe('App dashboard integration', () => {
   it('renders mocked dashboard data and updates when the hook changes', () => {
-    const refresh = vi.fn<[], Promise<void>>().mockResolvedValue()
+    const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     const saveConfig = vi
-      .fn<[ConfigMap], Promise<ConfigUpdateResponse>>()
+      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
       .mockResolvedValue({ success: true })
 
     const initialData: DashboardData = {
@@ -197,7 +197,7 @@ describe('ConfigEditor', () => {
     }
 
     const onSave = vi
-      .fn<[ConfigMap], Promise<ConfigUpdateResponse>>()
+      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
       .mockResolvedValue({ success: true })
     const user = userEvent.setup()
 
@@ -222,7 +222,7 @@ describe('ConfigEditor', () => {
   it('shows an error when saving fails', async () => {
     const config: ConfigMap = { SIP_DOMAIN: 'example.com' }
     const onSave = vi
-      .fn<[ConfigMap], Promise<ConfigUpdateResponse>>()
+      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
       .mockRejectedValue(new Error('Save failed'))
     const user = userEvent.setup()
 
