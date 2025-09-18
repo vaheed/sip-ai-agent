@@ -26,6 +26,14 @@ The build output is written to `../app/static/dashboard`.  The Docker image and 
 npm run lint
 ```
 
+## Testing
+
+```bash
+npm run test
+```
+
+Vitest runs in a headless jsdom environment, making the suite suitable for local development and continuous integration.
+
 ## Folder structure
 
 - `src/` – React application code
