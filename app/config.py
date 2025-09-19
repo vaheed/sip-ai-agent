@@ -290,6 +290,14 @@ def get_settings() -> Settings:
         raise ConfigurationError(message, details=details) from exc
 
 
+def reset_settings_cache() -> None:
+    """Clear the cached :func:`get_settings` result when available."""
+
+    cache_clear = getattr(get_settings, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+
+
 def env_file_path() -> Path:
     """Return the path to the runtime ``.env`` file."""
 
