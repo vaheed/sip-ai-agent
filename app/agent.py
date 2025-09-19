@@ -137,15 +137,6 @@ FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
 
 
-if not TYPE_CHECKING:
-    _TimerEntry = getattr(pj, "TimerEntry", None)
-    if _TimerEntry is not None:
-        _TimerEntryBase = _TimerEntry
-    else:  # pragma: no cover - depends on runtime bindings
-        class _TimerEntryBase:
-            def __init__(self, *_, **__) -> None:
-                pass
-
 
 class EndpointTimer(_TimerEntryBase):
     """Timer that adapts to the available ``pjsua2`` bindings."""
