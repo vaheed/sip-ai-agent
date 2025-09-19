@@ -2,7 +2,6 @@ import { ThemeProvider } from './theme-provider'
 import { ActiveCallsCard } from './components/ActiveCallsCard'
 import { AuthNotice } from './components/AuthNotice'
 import { CallHistoryTable } from './components/CallHistoryTable'
-import { ConfigEditor } from './components/ConfigEditor'
 import { ErrorBanner } from './components/ErrorBanner'
 import { LoadingScreen } from './components/LoadingScreen'
 import { LogsPanel } from './components/LogsPanel'
@@ -16,13 +15,11 @@ const DashboardView = () => {
     callHistory,
     logs,
     metrics,
-    config,
     loading,
     authRequired,
     error,
     websocketState,
     refresh,
-    saveConfig,
   } = useDashboardData()
 
   if (authRequired) {
@@ -58,7 +55,7 @@ const DashboardView = () => {
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/5 px-3 py-1 dark:bg-white/5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden />
-                  Secure configuration editing
+                  Environment-managed config
                 </span>
               </div>
             </div>
@@ -86,7 +83,22 @@ const DashboardView = () => {
               <StatusOverview status={status} metrics={metrics} websocketState={websocketState} />
               <ActiveCallsCard status={status} callHistory={callHistory} />
               <CallHistoryTable history={callHistory} />
-              <ConfigEditor config={config} onSave={saveConfig} />
+              <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 p-6 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/5 sm:p-8">
+                <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_75%)] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_80%)]" />
+                <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Environment-managed configuration</h2>
+                  <p>
+                    Runtime settings are now sourced exclusively from the <code>.env</code> file. Update SIP credentials,
+                    OpenAI keys, and feature toggles directly in that file and restart the containers to apply the
+                    changes.
+                  </p>
+                  <p>
+                    Monitor authentication credentials are also provided via the environment. Set{' '}
+                    <code>MONITOR_ADMIN_USERNAME</code> and <code>MONITOR_ADMIN_PASSWORD</code> to control dashboard
+                    access.
+                  </p>
+                </div>
+              </div>
             </section>
             <aside className="space-y-8 xl:sticky xl:top-24">
               <LogsPanel logs={logs} />

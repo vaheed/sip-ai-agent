@@ -36,29 +36,13 @@ from fastapi.responses import (
 )
 
 try:
-    from .config import (
-        ConfigurationError,
-        get_settings,
-        merge_env,
-        read_env_file,
-        reset_settings_cache,
-        validate_env_map,
-        write_env_file,
-    )
+    from .config import read_env_file
 except ImportError as exc:  # pragma: no cover - script execution fallback
     if "attempted relative import" in str(exc) or getattr(exc, "name", "") in {
         "config",
         "app.config",
     }:
-        from config import (  # type: ignore
-            ConfigurationError,
-            get_settings,
-            merge_env,
-            read_env_file,
-            reset_settings_cache,
-            validate_env_map,
-            write_env_file,
-        )
+        from config import read_env_file  # type: ignore
     else:  # pragma: no cover - surface configuration import issues
         raise
 
@@ -76,62 +60,8 @@ except ImportError:  # pragma: no cover - script execution fallback
         get_logger,
         metrics,
     )
-
-
-def load_config() -> dict:
-    """Return the current configuration as a mapping of strings."""
-
-    try:
-        return get_settings().as_env()
-    except ConfigurationError:
-        return read_env_file()
-
-
-def save_config(new_config: dict) -> None:
-    """Validate and persist configuration updates to the ``.env`` file."""
-
-    existing = read_env_file()
-    merged = merge_env(existing, new_config)
-    validate_env_map(merged, include_os_environ=False)
-    write_env_file(merged)
-    reset_settings_cache()
-
-
 class Monitor:
     """Expose agent state over HTTP, JSON and websocket APIs."""
-
-    CONFIG_KEYS = [
-        "SIP_DOMAIN",
-        "SIP_USER",
-        "SIP_PASS",
-        "OPENAI_API_KEY",
-        "AGENT_ID",
-        "ENABLE_SIP",
-        "ENABLE_AUDIO",
-        "OPENAI_MODE",
-        "OPENAI_MODEL",
-        "OPENAI_VOICE",
-        "OPENAI_TEMPERATURE",
-        "SYSTEM_PROMPT",
-        "SIP_TRANSPORT_PORT",
-        "SIP_JB_MIN",
-        "SIP_JB_MAX",
-        "SIP_JB_MAX_PRE",
-        "SIP_ENABLE_ICE",
-        "SIP_ENABLE_TURN",
-        "SIP_STUN_SERVER",
-        "SIP_TURN_SERVER",
-        "SIP_TURN_USER",
-        "SIP_TURN_PASS",
-        "SIP_ENABLE_SRTP",
-        "SIP_SRTP_OPTIONAL",
-        "SIP_PREFERRED_CODECS",
-        "SIP_REG_RETRY_BASE",
-        "SIP_REG_RETRY_MAX",
-        "SIP_INVITE_RETRY_BASE",
-        "SIP_INVITE_RETRY_MAX",
-        "SIP_INVITE_MAX_ATTEMPTS",
-    ]
 
     def __init__(self) -> None:
         self.app = FastAPI(title="SIP AI Agent Monitor")
@@ -166,8 +96,17 @@ class Monitor:
         self.realtime_ws_last_event: Optional[float] = None
 
         # Authentication/session management
-        self.admin_username = os.getenv("MONITOR_ADMIN_USERNAME", "admin")
-        self.admin_password = os.getenv("MONITOR_ADMIN_PASSWORD", "admin")
+        env_values = read_env_file()
+        self.admin_username = (
+            os.getenv("MONITOR_ADMIN_USERNAME")
+            or env_values.get("MONITOR_ADMIN_USERNAME")
+            or "admin"
+        )
+        self.admin_password = (
+            os.getenv("MONITOR_ADMIN_PASSWORD")
+            or env_values.get("MONITOR_ADMIN_PASSWORD")
+            or "admin"
+        )
         self.session_cookie = os.getenv("MONITOR_SESSION_COOKIE", "monitor_session")
         self.session_ttl = int(os.getenv("MONITOR_SESSION_TTL", "86400"))
         self._sessions: Dict[str, Dict[str, Any]] = {}
@@ -479,63 +418,6 @@ class Monitor:
 
             return FileResponse(file_path)
 
-        @self.app.post("/api/update_config")
-        async def api_update_config(
-            request: Request,
-            session: Dict[str, Any] = Depends(_admin_dependency),
-        ) -> JSONResponse:
-            del session
-            try:
-                new_config: Dict[str, str] = {}
-                content_type = request.headers.get("content-type", "")
-                if content_type.startswith("application/json"):
-                    incoming = await request.json()
-                    for key in Monitor.CONFIG_KEYS:
-                        if key in incoming:
-                            new_config[key] = str(incoming[key])
-                else:
-                    form = await request.form()
-                    for key in Monitor.CONFIG_KEYS:
-                        value = form.get(key)
-                        if value is not None:
-                            new_config[key] = str(value)
-                reload_status: Optional[Dict[str, Any]] = None
-                if new_config:
-                    save_config(new_config)
-                    self.add_log(
-                        "Configuration updated",
-                        event="configuration_updated",
-                        keys=list(new_config.keys()),
-                    )
-                    reload_status = self.request_safe_reload()
-                else:
-                    reload_status = {
-                        "status": "noop",
-                        "active_calls": len(self.active_calls),
-                        "message": self._format_reload_message("noop", len(self.active_calls)),
-                    }
-                return JSONResponse({"success": True, "reload": reload_status})
-            except ConfigurationError as err:
-                self.add_log(
-                    f"Configuration validation error: {err}",
-                    level="error",
-                    event="configuration_error",
-                )
-                return JSONResponse(
-                    {
-                        "success": False,
-                        "error": str(err),
-                        "details": err.details,
-                    },
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                )
-            except Exception as exc:  # pragma: no cover - defensive logging
-                self.add_log(f"Error updating config: {exc}")
-                return JSONResponse(
-                    {"success": False, "error": str(exc)},
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
         @self.app.get("/api/call_history")
         async def api_call_history(
             session: Dict[str, Any] = Depends(_admin_dependency),
@@ -614,18 +496,6 @@ class Monitor:
         ) -> Dict[str, Any]:
             del session
             return {"logs": list(self.logs)}
-
-        @self.app.get("/api/config")
-        async def api_config(
-            session: Dict[str, Any] = Depends(_admin_dependency),
-        ) -> Dict[str, str]:
-            del session
-            config_map = load_config()
-            response: Dict[str, str] = {}
-            for key in Monitor.CONFIG_KEYS:
-                value = config_map.get(key)
-                response[key] = "" if value is None else str(value)
-            return response
 
         @self.app.websocket("/ws/events")
         async def events_websocket(websocket: WebSocket) -> None:

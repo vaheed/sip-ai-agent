@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import ConfigurationError, read_env_file as config_read_env_file, write_env_file as config_write_env_file
 from app.monitor import Monitor
 
 
@@ -65,97 +64,50 @@ def test_login_logout_and_dashboard_protection(client: TestClient, monitor: Moni
     assert follow_up.headers["location"].startswith("/login")
 
 
-def test_update_config_validation_error(
-    client: TestClient, monitor: Monitor, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _login(client)
-
-    validate_called = False
-    reload_called = False
-    write_called = False
-
-    def fake_validate(values, include_os_environ):
-        nonlocal validate_called
-        validate_called = True
-        raise ConfigurationError("bad config", details=["SIP_DOMAIN: invalid"])
-
-    def fake_reload():
-        nonlocal reload_called
-        reload_called = True
-        return {"status": "noop"}
-
-    def fake_write(values):
-        nonlocal write_called
-        write_called = True
-
-    monkeypatch.setattr("app.monitor.validate_env_map", fake_validate)
-    monkeypatch.setattr(monitor, "request_safe_reload", fake_reload)
-    monkeypatch.setattr("app.monitor.write_env_file", fake_write)
-
-    response = client.post(
-        "/api/update_config",
-        json={"SIP_DOMAIN": "bad.example.com"},
-    )
-
-    assert response.status_code == 400
-    payload = response.json()
-    assert payload["success"] is False
-    assert payload["error"] == "bad config"
-    assert payload["details"] == ["SIP_DOMAIN: invalid"]
-
-    assert validate_called is True
-    assert reload_called is False
-    assert write_called is False
-
-
-def test_update_config_json_persists_and_returns_reload(
-    client: TestClient, monitor: Monitor, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _login(client)
-
-    env_path = tmp_path / ".env"
-    baseline = {
-        "SIP_DOMAIN": "example.com",
-        "SIP_USER": "1001",
-        "SIP_PASS": "secret",
-        "OPENAI_API_KEY": "sk-test",
-        "AGENT_ID": "agent-1",
-    }
-    config_write_env_file(baseline, path=env_path)
-
+def test_login_uses_env_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
-        "app.monitor.read_env_file", lambda: config_read_env_file(env_path)
-    )
-    monkeypatch.setattr(
-        "app.monitor.write_env_file",
-        lambda values: config_write_env_file(values, path=env_path),
-    )
-
-    reload_payload = {
-        "status": "restarting",
-        "active_calls": 0,
-        "message": "Configuration saved.",
-    }
-
-    monkeypatch.setattr(monitor, "request_safe_reload", lambda: reload_payload)
-
-    response = client.post(
-        "/api/update_config",
-        json={
-            "SIP_DOMAIN": "new.example.com",
-            "SYSTEM_PROMPT": "Be helpful.",
+        "app.monitor.read_env_file",
+        lambda: {
+            "MONITOR_ADMIN_USERNAME": "env-admin",
+            "MONITOR_ADMIN_PASSWORD": "env-secret",
         },
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["success"] is True
-    assert payload["reload"] == reload_payload
+    monitor = Monitor()
+    monitor.dashboard_dir = tmp_path
 
-    result = config_read_env_file(env_path)
-    assert result["SIP_DOMAIN"] == "new.example.com"
-    assert result["SYSTEM_PROMPT"] == "Be helpful."
-    assert result["SIP_USER"] == "1001"
+    with TestClient(monitor.app) as client:
+        if monitor._loop is None:  # type: ignore[attr-defined]
+            monitor._loop = asyncio.get_event_loop()  # type: ignore[attr-defined]
+
+        invalid = client.post(
+            "/login",
+            data={"username": "admin", "password": "admin", "next": "/dashboard"},
+            follow_redirects=False,
+        )
+        assert invalid.status_code == 200
+        assert "Invalid username or password" in invalid.text
+
+        response = client.post(
+            "/login",
+            data={
+                "username": "env-admin",
+                "password": "env-secret",
+                "next": "/dashboard",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+
+def test_configuration_routes_removed(client: TestClient) -> None:
+    _login(client)
+
+    config_get = client.get("/api/config")
+    assert config_get.status_code == 404
+
+    config_post = client.post("/api/update_config", json={"SIP_DOMAIN": "example.com"})
+    assert config_post.status_code == 404
 
 
 def test_websocket_events_and_call_history_csv(
