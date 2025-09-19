@@ -94,28 +94,29 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
   }
 
   return (
-    <div className="rounded-2xl border border-border-light bg-white/80 p-6 shadow-sm backdrop-blur dark:border-border-dark dark:bg-gray-900/70">
+    <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 p-6 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/5 sm:p-8">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_75%)] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_80%)]" />
       <form className="space-y-6" onSubmit={handleSubmit}>
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-200">
               <AdjustmentsHorizontalIcon className="h-6 w-6" />
             </div>
-            <div>
-              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">Configuration</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Update SIP and agent parameters. Restart required after saving.
+            <div className="space-y-1">
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">Configuration</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Update SIP and agent parameters with instant environment persistence.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <CheckCircleIcon className="h-5 w-5" />
+          <div className="flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-xs text-slate-500 dark:bg-white/5 dark:text-slate-300">
+            <CheckCircleIcon className="h-4 w-4" />
             <span>Changes persist to the .env file</span>
           </div>
         </div>
 
         {successMessage ? (
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100">
             {reloadStatus?.status === 'restarting' ? (
               <ArrowPathIcon className="mt-0.5 h-5 w-5 animate-spin" />
             ) : (
@@ -123,38 +124,36 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
             )}
             <div className="space-y-1">
               <p>{successMessage}</p>
-              {reloadDetail ? (
-                <p className="text-xs text-emerald-700/80 dark:text-emerald-200/80">{reloadDetail}</p>
-              ) : null}
+              {reloadDetail ? <p className="text-xs text-emerald-600 dark:text-emerald-200/80">{reloadDetail}</p> : null}
             </div>
           </div>
         ) : null}
         {errorMessage ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
             {errorMessage}
           </div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {CONFIG_KEYS.map((key) => {
             const value = formValues[key] ?? ''
             const isTextarea = textareaKeys.includes(key)
             return (
-              <label key={key} className="flex flex-col gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{key}</span>
+              <label key={key} className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{key}</span>
                 {isTextarea ? (
                   <textarea
                     value={value}
                     onChange={(event) => handleChange(key, event.target.value)}
-                    rows={5}
-                    className="rounded-xl border border-gray-300 bg-white/80 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-900/70 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/60"
+                    rows={6}
+                    className="min-h-[160px] rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/60"
                   />
                 ) : (
                   <input
                     type="text"
                     value={value}
                     onChange={(event) => handleChange(key, event.target.value)}
-                    className="rounded-xl border border-gray-300 bg-white/80 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-900/70 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/60"
+                    className="rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/60"
                   />
                 )}
               </label>
@@ -162,15 +161,15 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
           })}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-gray-100 pt-4 text-sm dark:border-gray-800 md:flex-row md:items-center md:justify-between">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex flex-col gap-4 border-t border-slate-200/70 pt-4 text-sm dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             Saving applies immediately to the environment file. Restart containers to propagate changes.
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
               onClick={handleReset}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 transition hover:border-gray-400 hover:text-gray-800 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:text-gray-100"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-800 dark:border-white/20 dark:text-slate-200 dark:hover:border-white/40 dark:hover:text-white"
             >
               <ArrowPathIcon className={`h-4 w-4 ${saving ? 'animate-spin' : ''}`} />
               Reset
@@ -178,7 +177,7 @@ export const ConfigEditor = ({ config, onSave }: ConfigEditorProps) => {
             <button
               type="submit"
               disabled={!hasChanges || saving}
-              className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               {saving ? 'Saving…' : 'Save changes'}
             </button>
