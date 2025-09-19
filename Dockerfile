@@ -8,7 +8,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM python:3.9-slim AS backend
+FROM python:3.11-slim AS backend
 
 WORKDIR /app
 
