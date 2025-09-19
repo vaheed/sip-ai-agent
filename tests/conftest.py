@@ -67,7 +67,7 @@ class _FakeEndpoint:
     def __init__(self):
         self.transport = None
 
-    def utilTimerSchedule(self, timer, time_val):  # pragma: no cover - stub
+    def utilTimerSchedule(self, timer, value):  # pragma: no cover - stub
         timer._callback()
 
     def utilTimerCancel(self, timer):  # pragma: no cover - stub

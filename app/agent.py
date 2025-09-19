@@ -153,6 +153,8 @@ class EndpointTimer(_TimerEntryBase):
         self._thread_timer: Optional[threading.Timer] = None
         self._thread_desc = None
         self._pj_thread = None
+        self._schedule_variant: Optional[str] = None
+        self._supports_msec: Optional[bool] = None
 
     def schedule(self, delay_seconds: float) -> None:
         """Schedule the timer to fire after ``delay_seconds``."""
@@ -160,22 +162,67 @@ class EndpointTimer(_TimerEntryBase):
         if delay_seconds < 0:
             delay_seconds = 0
 
-        if hasattr(self._endpoint, "utilTimerSchedule") and hasattr(pj, "TimeVal"):
-            try:
-                seconds = int(delay_seconds)
-                msec = int((delay_seconds - seconds) * 1000)
-                time_val = pj.TimeVal()
-                time_val.sec = seconds
-                time_val.msec = msec
-                self._endpoint.utilTimerSchedule(self, time_val)
-                return
-            except Exception as err:  # pragma: no cover - depends on runtime support
-                monitor.add_log(f"Falling back to threading timer: {err}")
+        if self._schedule_variant == "threading":
+            self._start_thread_timer(delay_seconds)
+            return
+
+        fallback_reasons = []
+        schedule = getattr(self._endpoint, "utilTimerSchedule", None)
+        if callable(schedule):
+            total_msec = max(int(round(delay_seconds * 1000)), 0)
+
+            if self._supports_msec is not False:
+                try:
+                    schedule(self, total_msec)
+                except TypeError:
+                    self._supports_msec = False
+                    fallback_reasons.append("utilTimerSchedule int overload not available")
+                except Exception as err:  # pragma: no cover - depends on runtime support
+                    fallback_reasons.append(f"utilTimerSchedule int variant failed: {err}")
+                else:
+                    self._supports_msec = True
+                    self._schedule_variant = "msec"
+                    return
+
+            if hasattr(pj, "TimeVal"):
+                seconds, msec = divmod(total_msec, 1000)
+                try:
+                    time_val = pj.TimeVal()
+                except Exception as err:  # pragma: no cover - instantiation failure
+                    fallback_reasons.append(f"TimeVal unavailable: {err}")
+                else:
+                    time_val.sec = seconds
+                    time_val.msec = msec
+                    try:
+                        schedule(self, time_val)
+                    except Exception as err:  # pragma: no cover - depends on runtime support
+                        fallback_reasons.append(
+                            f"utilTimerSchedule TimeVal variant failed: {err}"
+                        )
+                    else:
+                        self._schedule_variant = "timeval"
+                        return
+            else:
+                fallback_reasons.append("pjsua2.TimeVal not available")
+        else:
+            fallback_reasons.append("utilTimerSchedule unavailable on endpoint")
 
         # Fallback for environments where utilTimerSchedule is unavailable
+        self._schedule_variant = "threading"
+        if not fallback_reasons:
+            fallback_reasons.append("utilTimerSchedule failed for an unknown reason")
+        self._log_timer_fallback("; ".join(fallback_reasons))
+        self._start_thread_timer(delay_seconds)
+
+    def _start_thread_timer(self, delay_seconds: float) -> None:
         self._thread_timer = threading.Timer(delay_seconds, self._thread_timer_callback)
         self._thread_timer.daemon = True
         self._thread_timer.start()
+
+    def _log_timer_fallback(self, reason: str) -> None:
+        message = f"Falling back to threading timer: {reason}"
+        logger.warning(message)
+        monitor.add_log(message, event="endpoint_timer_thread_fallback")
 
     def cancel(self) -> None:
         """Cancel the scheduled timer if active."""
@@ -194,28 +241,37 @@ class EndpointTimer(_TimerEntryBase):
 
     def _thread_timer_callback(self) -> None:
         """Execute callback from fallback timer ensuring PJLIB thread registration."""
-        self._register_thread_with_pjlib()
+        if not self._register_thread_with_pjlib():
+            message = "Failed to register fallback timer thread with PJLIB"
+            logger.error(message)
+            monitor.add_log(message, level="error", event="endpoint_timer_thread_registration_failed")
+            return
+
+        monitor.add_log(
+            "EndpointTimer fallback thread executing callback",
+            event="endpoint_timer_thread_callback",
+        )
         self._callback()
 
-    def _register_thread_with_pjlib(self) -> None:
+    def _register_thread_with_pjlib(self) -> bool:
         lib_cls = getattr(pj, "Lib", None)
         if lib_cls is None:
-            return
+            return True
 
         try:
             lib = lib_cls.instance()
         except Exception:
-            return
+            return False
 
         thread_register = getattr(lib, "threadRegister", None)
         if not callable(thread_register):
-            return
+            return True
 
         thread_is_registered = getattr(lib, "threadIsRegistered", None)
         if callable(thread_is_registered):
             try:
                 if thread_is_registered():
-                    return
+                    return True
             except Exception:
                 pass
 
@@ -235,17 +291,28 @@ class EndpointTimer(_TimerEntryBase):
 
             if self._thread_desc is not None and self._pj_thread is not None:
                 try:
-                    thread_register("endpoint_timer", self._thread_desc, self._pj_thread)
-                    return
+                    result = thread_register(
+                        "endpoint_timer", self._thread_desc, self._pj_thread
+                    )
                 except TypeError:
                     pass
                 except Exception:
-                    return
+                    return False
+                else:
+                    return self._is_successful_thread_registration(result)
 
         try:
-            thread_register("endpoint_timer")
+            result = thread_register("endpoint_timer")
         except Exception:
-            pass
+            return False
+        else:
+            return self._is_successful_thread_registration(result)
+
+    @staticmethod
+    def _is_successful_thread_registration(result: object) -> bool:
+        if isinstance(result, int):
+            return result == 0
+        return True
 
 
 # Audio callback class for PJSIP
