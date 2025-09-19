@@ -138,6 +138,36 @@ class _FakeTransportConfig:
         self.port = 0
 
 
+class _FakeThreadDesc:
+    pass
+
+
+class _FakeThread:
+    pass
+
+
+class _FakeLib:
+    _instance = None
+
+    def __init__(self):
+        self.registered = []
+
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def threadRegister(self, name, desc=None, thread=None):  # pragma: no cover - stub
+        self.registered.append((name, desc, thread))
+
+    def threadIsRegistered(self):  # pragma: no cover - stub
+        return False
+
+    def reset(self):  # pragma: no cover - stub helper
+        self.registered.clear()
+
+
 _fake_pj = types.ModuleType("pjsua2")
 _fake_pj.AudioMedia = _FakeAudioMedia
 _fake_pj.Call = _FakeCall
@@ -150,6 +180,9 @@ _fake_pj.CallOpParam = _FakeCallOpParam
 _fake_pj.TimerEntry = type("TimerEntry", (), {})
 _fake_pj.AuthCredInfo = lambda *args, **kwargs: types.SimpleNamespace(args=args, kwargs=kwargs)
 _fake_pj.TimeVal = _FakeTimeVal
+_fake_pj.ThreadDesc = _FakeThreadDesc
+_fake_pj.Thread = _FakeThread
+_fake_pj.Lib = _FakeLib
 _fake_pj.PJMEDIA_FRAME_TYPE_AUDIO = 0
 _fake_pj.PJMEDIA_FRAME_TYPE_NONE = 1
 _fake_pj.PJSUA_INVALID_ID = -1

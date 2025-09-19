@@ -151,6 +151,8 @@ class EndpointTimer(_TimerEntryBase):
         self._endpoint = endpoint
         self._callback = callback
         self._thread_timer: Optional[threading.Timer] = None
+        self._thread_desc = None
+        self._pj_thread = None
 
     def schedule(self, delay_seconds: float) -> None:
         """Schedule the timer to fire after ``delay_seconds``."""
@@ -171,7 +173,7 @@ class EndpointTimer(_TimerEntryBase):
                 monitor.add_log(f"Falling back to threading timer: {err}")
 
         # Fallback for environments where utilTimerSchedule is unavailable
-        self._thread_timer = threading.Timer(delay_seconds, self._callback)
+        self._thread_timer = threading.Timer(delay_seconds, self._thread_timer_callback)
         self._thread_timer.daemon = True
         self._thread_timer.start()
 
@@ -189,6 +191,61 @@ class EndpointTimer(_TimerEntryBase):
 
     def onTimeout(self) -> None:  # pragma: no cover - invoked by PJSIP runtime
         self._callback()
+
+    def _thread_timer_callback(self) -> None:
+        """Execute callback from fallback timer ensuring PJLIB thread registration."""
+        self._register_thread_with_pjlib()
+        self._callback()
+
+    def _register_thread_with_pjlib(self) -> None:
+        lib_cls = getattr(pj, "Lib", None)
+        if lib_cls is None:
+            return
+
+        try:
+            lib = lib_cls.instance()
+        except Exception:
+            return
+
+        thread_register = getattr(lib, "threadRegister", None)
+        if not callable(thread_register):
+            return
+
+        thread_is_registered = getattr(lib, "threadIsRegistered", None)
+        if callable(thread_is_registered):
+            try:
+                if thread_is_registered():
+                    return
+            except Exception:
+                pass
+
+        thread_desc_cls = getattr(pj, "ThreadDesc", None)
+        thread_cls = getattr(pj, "Thread", None)
+        if thread_desc_cls is not None and thread_cls is not None:
+            if self._thread_desc is None:
+                try:
+                    self._thread_desc = thread_desc_cls()
+                except Exception:
+                    self._thread_desc = None
+            if self._pj_thread is None:
+                try:
+                    self._pj_thread = thread_cls()
+                except Exception:
+                    self._pj_thread = None
+
+            if self._thread_desc is not None and self._pj_thread is not None:
+                try:
+                    thread_register("endpoint_timer", self._thread_desc, self._pj_thread)
+                    return
+                except TypeError:
+                    pass
+                except Exception:
+                    return
+
+        try:
+            thread_register("endpoint_timer")
+        except Exception:
+            pass
 
 
 # Audio callback class for PJSIP
