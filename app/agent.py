@@ -50,6 +50,17 @@ from monitor import monitor
 
 logger = get_logger(__name__)
 
+
+def _idle_forever() -> None:
+    """Keep the monitoring server alive while blocking the SIP stack."""
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        monitor.add_log("Exiting on keyboard interrupt", event='agent_shutdown')
+
+
 SETTINGS: Optional["AppSettings"]
 CONFIG_ERROR: Optional[ConfigurationError] = None
 try:
@@ -1281,12 +1292,18 @@ def main():
                 level='error',
                 event='configuration_error_detail',
             )
+        monitor.add_log(
+            "Monitoring server is running so configuration fixes can be applied.",
+            level='warning',
+            event='configuration_error_waiting',
+        )
         logger.error(
             error_msg,
             extra={"event": "configuration_error", "details": CONFIG_ERROR.details},
         )
         print(CONFIG_ERROR, file=sys.stderr)
-        sys.exit(1)
+        _idle_forever()
+        return
 
     if not ENABLE_SIP:
         warning_msg = (
@@ -1298,11 +1315,7 @@ def main():
             event='sip_disabled',
         )
         logger.warning(warning_msg, extra={"event": "sip_disabled"})
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            monitor.add_log("Exiting on keyboard interrupt", event='agent_shutdown')
+        _idle_forever()
         return
 
     # Create and initialize PJSIP library
