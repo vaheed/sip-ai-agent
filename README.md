@@ -47,7 +47,7 @@ PBX / SIP phones ──(SIP/RTP)──► sip-agent (PJSIP + asyncio)
                                │
                                ├── WebSocket ─► OpenAI realtime / legacy APIs
                                │
-                               └── FastAPI monitor ──(REST + WebSocket)──► React dashboard (Nginx)
+                               └── FastAPI monitor ──(REST + WebSocket)──► React dash (Nginx)
 ```
 
 ## Call flow
@@ -79,7 +79,7 @@ PBX / SIP phones ──(SIP/RTP)──► sip-agent (PJSIP + asyncio)
 Clone the repo and copy the sample configuration:
 
 ```bash
-git clone https://github.com/openai/sip-ai-agent.git
+git clone https://github.com/vaheed/sip-ai-agent.git
 cd sip-ai-agent
 cp env.example .env
 ```
