@@ -41,6 +41,7 @@ try:
         get_settings,
         merge_env,
         read_env_file,
+        reset_settings_cache,
         validate_env_map,
         write_env_file,
     )
@@ -54,6 +55,7 @@ except ImportError as exc:  # pragma: no cover - script execution fallback
             get_settings,
             merge_env,
             read_env_file,
+            reset_settings_cache,
             validate_env_map,
             write_env_file,
         )
@@ -92,7 +94,7 @@ def save_config(new_config: dict) -> None:
     merged = merge_env(existing, new_config)
     validate_env_map(merged, include_os_environ=False)
     write_env_file(merged)
-    get_settings.cache_clear()
+    reset_settings_cache()
 
 
 class Monitor:
