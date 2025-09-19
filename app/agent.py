@@ -147,10 +147,11 @@ if not TYPE_CHECKING:
                 pass
 
 
-class _EndpointTimerMixin:
-    """Shared timer behaviour independent of the underlying binding."""
+class EndpointTimer(_TimerEntryBase):
+    """Timer that adapts to the available ``pjsua2`` bindings."""
 
     def __init__(self, endpoint: pj.Endpoint, callback: Callable[[], None]) -> None:
+        super().__init__()
         self._endpoint = endpoint
         self._callback = callback
         self._thread_timer: Optional[threading.Timer] = None
@@ -161,7 +162,7 @@ class _EndpointTimerMixin:
         if delay_seconds < 0:
             delay_seconds = 0
 
-        if hasattr(self._endpoint, 'utilTimerSchedule') and hasattr(pj, 'TimeVal'):
+        if hasattr(self._endpoint, "utilTimerSchedule") and hasattr(pj, "TimeVal"):
             try:
                 seconds = int(delay_seconds)
                 msec = int((delay_seconds - seconds) * 1000)
@@ -181,7 +182,7 @@ class _EndpointTimerMixin:
     def cancel(self) -> None:
         """Cancel the scheduled timer if active."""
         try:
-            if hasattr(self._endpoint, 'utilTimerCancel'):
+            if hasattr(self._endpoint, "utilTimerCancel"):
                 self._endpoint.utilTimerCancel(self)
         except Exception:
             pass
@@ -192,14 +193,6 @@ class _EndpointTimerMixin:
 
     def onTimeout(self) -> None:  # pragma: no cover - invoked by PJSIP runtime
         self._callback()
-
-
-class EndpointTimer(_EndpointTimerMixin, _TimerEntryBase):
-    """Timer that adapts to the available ``pjsua2`` bindings."""
-
-    def __init__(self, endpoint: pj.Endpoint, callback: Callable[[], None]) -> None:
-        _TimerEntryBase.__init__(self)
-        _EndpointTimerMixin.__init__(self, endpoint, callback)
 
 
 # Audio callback class for PJSIP
