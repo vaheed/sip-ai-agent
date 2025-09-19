@@ -8,7 +8,7 @@ import threading
 import base64
 import queue
 import contextlib
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 import pjsua2 as pj
 
 try:
@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 if TYPE_CHECKING:  # pragma: no cover - used for type checking only
     from app.config import Settings as AppSettings
+    from pjsua2 import TimerEntry as _TimerEntryBase
 
 try:
     from .config import ConfigurationError, get_settings
@@ -136,11 +137,20 @@ FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
 
 
-class EndpointTimer(pj.TimerEntry):
-    """Wrapper around ``pj.TimerEntry`` with automatic fallback."""
+if not TYPE_CHECKING:
+    _TimerEntry = getattr(pj, "TimerEntry", None)
+    if _TimerEntry is not None:
+        _TimerEntryBase = _TimerEntry
+    else:  # pragma: no cover - depends on runtime bindings
+        class _TimerEntryBase:
+            def __init__(self, *_, **__) -> None:
+                pass
 
-    def __init__(self, endpoint: pj.Endpoint, callback):
-        super().__init__()
+
+class _EndpointTimerMixin:
+    """Shared timer behaviour independent of the underlying binding."""
+
+    def __init__(self, endpoint: pj.Endpoint, callback: Callable[[], None]) -> None:
         self._endpoint = endpoint
         self._callback = callback
         self._thread_timer: Optional[threading.Timer] = None
@@ -182,6 +192,14 @@ class EndpointTimer(pj.TimerEntry):
 
     def onTimeout(self) -> None:  # pragma: no cover - invoked by PJSIP runtime
         self._callback()
+
+
+class EndpointTimer(_EndpointTimerMixin, _TimerEntryBase):
+    """Timer that adapts to the available ``pjsua2`` bindings."""
+
+    def __init__(self, endpoint: pj.Endpoint, callback: Callable[[], None]) -> None:
+        _TimerEntryBase.__init__(self)
+        _EndpointTimerMixin.__init__(self, endpoint, callback)
 
 
 # Audio callback class for PJSIP
