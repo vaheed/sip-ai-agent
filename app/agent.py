@@ -254,6 +254,62 @@ class EndpointTimer(_TimerEntryBase):
         self._callback()
 
     def _register_thread_with_pjlib(self) -> bool:
+        def _endpoint_registration() -> bool:
+            endpoint_register = getattr(self._endpoint, "libRegisterThread", None)
+            if not callable(endpoint_register):
+                return False
+
+            endpoint_is_registered = getattr(
+                self._endpoint, "libIsThreadRegistered", None
+            )
+            if callable(endpoint_is_registered):
+                try:
+                    if endpoint_is_registered():
+                        return True
+                except Exception:
+                    pass
+
+            thread_desc_cls = getattr(pj, "ThreadDesc", None)
+            thread_cls = getattr(pj, "Thread", None)
+            if thread_desc_cls is not None and self._thread_desc is None:
+                try:
+                    self._thread_desc = thread_desc_cls()
+                except Exception:
+                    self._thread_desc = None
+            if thread_cls is not None and self._pj_thread is None:
+                try:
+                    self._pj_thread = thread_cls()
+                except Exception:
+                    self._pj_thread = None
+
+            attempts = []
+            if self._thread_desc is not None and self._pj_thread is not None:
+                attempts.append(("endpoint_timer", self._thread_desc, self._pj_thread))
+            if self._thread_desc is not None:
+                attempts.append(("endpoint_timer", self._thread_desc))
+            attempts.append(("endpoint_timer",))
+
+            for args in attempts:
+                try:
+                    result = endpoint_register(*args)
+                except TypeError:
+                    continue
+                except Exception:
+                    return False
+                else:
+                    if callable(endpoint_is_registered):
+                        try:
+                            if endpoint_is_registered():
+                                return True
+                        except Exception:
+                            pass
+                    if self._is_successful_thread_registration(result):
+                        return True
+            return False
+
+        if _endpoint_registration():
+            return True
+
         lib_cls = getattr(pj, "Lib", None)
         if lib_cls is None:
             return True
@@ -311,8 +367,6 @@ class EndpointTimer(_TimerEntryBase):
                     if _registration_succeeded(result):
                         return True
 
-                # Some builds expose a two-argument overload where the thread
-                # instance is optional.
                 try:
                     result = thread_register("endpoint_timer", self._thread_desc)
                 except TypeError:
