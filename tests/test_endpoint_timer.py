@@ -1,10 +1,8 @@
-import importlib
 import sys
 import types
 
 if "pydantic" not in sys.modules:
     _fake_pydantic = types.ModuleType("pydantic")
-
     class _FakeFieldInfo:
         def __init__(self, default=..., **kwargs):
             self.default = default
@@ -97,6 +95,34 @@ config.get_settings = lambda: _StubSettings()
 agent = importlib.import_module("app.agent")
 EndpointTimer = agent.EndpointTimer
 pj = importlib.import_module("pjsua2")
+
+
+class _MsecEndpoint:
+    def __init__(self):
+        self.calls = []
+
+    def utilTimerSchedule(self, timer, value):
+        self.calls.append(value)
+        timer._callback()
+
+    @staticmethod
+    def utilTimerCancel(timer):
+        pass
+
+
+class _TimeValEndpoint:
+    def __init__(self):
+        self.calls = []
+
+    def utilTimerSchedule(self, timer, value):
+        if isinstance(value, int):
+            raise TypeError("TimeVal overload only")
+        self.calls.append((value.sec, value.msec))
+        timer._callback()
+
+    @staticmethod
+    def utilTimerCancel(timer):
+        pass
 
 
 class _MsecEndpoint:
