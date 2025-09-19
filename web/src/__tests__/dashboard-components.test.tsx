@@ -4,17 +4,15 @@ vi.mock('../hooks/useDashboardData', () => ({
   useDashboardData: vi.fn(),
 }))
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { cleanup, render, screen } from '@testing-library/react'
 import App from '../App'
 import { ActiveCallsCard } from '../components/ActiveCallsCard'
 import { CallHistoryTable } from '../components/CallHistoryTable'
-import { ConfigEditor } from '../components/ConfigEditor'
 import { LogsPanel } from '../components/LogsPanel'
 import { StatusOverview } from '../components/StatusOverview'
 import { useDashboardData } from '../hooks/useDashboardData'
 import type { DashboardData } from '../hooks/useDashboardData'
-import type { CallHistoryItem, ConfigMap, ConfigUpdateResponse, MetricsSnapshot, StatusPayload } from '../types'
+import type { CallHistoryItem, MetricsSnapshot, StatusPayload } from '../types'
 
 const mockedUseDashboardData = vi.mocked(useDashboardData)
 
@@ -56,22 +54,17 @@ afterEach(() => {
 describe('App dashboard integration', () => {
   it('renders mocked dashboard data and updates when the hook changes', () => {
     const refresh = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
-    const saveConfig = vi
-      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
-      .mockResolvedValue({ success: true })
 
     const initialData: DashboardData = {
       status: buildStatus({ sip_registered: false, active_calls: [], api_tokens_used: 0 }),
       callHistory: [],
       logs: [],
       metrics: buildMetrics({ total_calls: 0, active_calls: 0 }),
-      config: { SIP_DOMAIN: 'initial.test' },
       loading: false,
       authRequired: false,
       error: null,
       websocketState: 'connecting',
       refresh,
-      saveConfig,
     }
 
     const updatedData: DashboardData = {
@@ -89,7 +82,6 @@ describe('App dashboard integration', () => {
       ],
       logs: ['Boot sequence', 'Call connected'],
       metrics: buildMetrics({ total_calls: 5, active_calls: 1 }),
-      config: { ...initialData.config, SIP_USER: 'agent-42' },
       websocketState: 'open',
     }
 
@@ -185,56 +177,6 @@ describe('LogsPanel', () => {
 
     expect(screen.getByText('3 entries')).toBeInTheDocument()
     expect(screen.getByText('third event')).toBeInTheDocument()
-  })
-})
-
-describe('ConfigEditor', () => {
-  it('saves edited configuration values', async () => {
-    const config: ConfigMap = {
-      SIP_DOMAIN: 'example.com',
-      SIP_USER: 'agent-1',
-      SYSTEM_PROMPT: 'Hello',
-    }
-
-    const onSave = vi
-      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
-      .mockResolvedValue({ success: true })
-    const user = userEvent.setup()
-
-    render(<ConfigEditor config={config} onSave={onSave} />)
-
-    const domainInput = screen.getByLabelText('SIP_DOMAIN') as HTMLInputElement
-    await user.clear(domainInput)
-    await user.type(domainInput, 'new.example.com')
-
-    const saveButton = screen.getByRole('button', { name: 'Save changes' })
-    expect(saveButton).not.toBeDisabled()
-
-    await user.click(saveButton)
-
-    await waitFor(() => {
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ SIP_DOMAIN: 'new.example.com' }))
-    })
-
-    expect(await screen.findByText('Configuration saved.')).toBeInTheDocument()
-  })
-
-  it('shows an error when saving fails', async () => {
-    const config: ConfigMap = { SIP_DOMAIN: 'example.com' }
-    const onSave = vi
-      .fn<(values: ConfigMap) => Promise<ConfigUpdateResponse>>()
-      .mockRejectedValue(new Error('Save failed'))
-    const user = userEvent.setup()
-
-    render(<ConfigEditor config={config} onSave={onSave} />)
-
-    const domainInput = screen.getByLabelText('SIP_DOMAIN') as HTMLInputElement
-    await user.type(domainInput, ' updated')
-
-    const saveButton = screen.getByRole('button', { name: 'Save changes' })
-    await user.click(saveButton)
-
-    expect(await screen.findByText('Save failed')).toBeInTheDocument()
   })
 })
 

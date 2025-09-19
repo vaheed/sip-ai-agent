@@ -79,6 +79,13 @@ _ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
             "SIP_INVITE_MAX_ATTEMPTS": "5",
         },
     ),
+    (
+        "# Monitor authentication",
+        {
+            "MONITOR_ADMIN_USERNAME": "admin",
+            "MONITOR_ADMIN_PASSWORD": "admin",
+        },
+    ),
 ]
 
 

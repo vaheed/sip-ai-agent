@@ -6,7 +6,6 @@ type DashboardFixtures = {
   status: StatusPayload
   callHistory: CallHistoryItem[]
   logs: { logs: string[] }
-  config: Record<string, string>
   metrics: MetricsSnapshot
 }
 
@@ -36,38 +35,6 @@ const createFixtures = (): DashboardFixtures => {
     ],
     logs: {
       logs: ['2024-02-01T12:00:00Z INFO Connected to upstream services'],
-    },
-    config: {
-      SIP_DOMAIN: 'pbx.example.com',
-      SIP_USER: '1001',
-      SIP_PASS: 'secret',
-      OPENAI_API_KEY: 'test-key',
-      AGENT_ID: 'demo-agent',
-      ENABLE_SIP: 'true',
-      ENABLE_AUDIO: 'true',
-      OPENAI_MODE: 'realtime',
-      OPENAI_MODEL: 'gpt-4o-realtime-preview',
-      OPENAI_VOICE: 'verse',
-      OPENAI_TEMPERATURE: '0.8',
-      SYSTEM_PROMPT: 'Hello world',
-      SIP_TRANSPORT_PORT: '5060',
-      SIP_JB_MIN: '200',
-      SIP_JB_MAX: '400',
-      SIP_JB_MAX_PRE: '800',
-      SIP_ENABLE_ICE: 'true',
-      SIP_ENABLE_TURN: 'false',
-      SIP_STUN_SERVER: 'stun:stun.example.com',
-      SIP_TURN_SERVER: '',
-      SIP_TURN_USER: '',
-      SIP_TURN_PASS: '',
-      SIP_ENABLE_SRTP: 'false',
-      SIP_SRTP_OPTIONAL: 'false',
-      SIP_PREFERRED_CODECS: 'opus,pcmu',
-      SIP_REG_RETRY_BASE: '1',
-      SIP_REG_RETRY_MAX: '32',
-      SIP_INVITE_RETRY_BASE: '1',
-      SIP_INVITE_RETRY_MAX: '16',
-      SIP_INVITE_MAX_ATTEMPTS: '4',
     },
     metrics: {
       active_calls: 1,
@@ -174,14 +141,6 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
-  await page.route('**/api/config', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(fixtures.config),
-    })
-  })
-
   await page.route('**/metrics', async (route) => {
     await route.fulfill({
       status: 200,
@@ -191,25 +150,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('renders dashboard data and saves configuration updates', async ({ page }) => {
-  let savedConfig: Record<string, string> | undefined
-
-  await page.route('**/api/update_config', async (route) => {
-    savedConfig = route.request().postDataJSON() as Record<string, string>
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        reload: {
-          status: 'restarting',
-          active_calls: 0,
-          message: 'Restarting now',
-        },
-      }),
-    })
-  })
-
+test('renders dashboard data and environment notice', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByRole('heading', { level: 1, name: 'SIP AI Agent Dashboard' })).toBeVisible()
@@ -219,12 +160,6 @@ test('renders dashboard data and saves configuration updates', async ({ page }) 
   await expect(page.getByRole('heading', { level: 2, name: 'Call History' })).toBeVisible()
   await expect(page.getByText('Monitoring 1 ongoing session')).toBeVisible()
 
-  const sipDomainField = page.getByLabel('SIP_DOMAIN')
-  await expect(sipDomainField).toHaveValue(fixtures.config.SIP_DOMAIN)
-
-  await sipDomainField.fill('sip.internal.example.com')
-  await page.getByRole('button', { name: 'Save changes' }).click()
-
-  await expect(page.getByText('Restarting now', { exact: true })).toBeVisible()
-  expect(savedConfig?.SIP_DOMAIN).toBe('sip.internal.example.com')
+  await expect(page.getByText('Environment-managed configuration')).toBeVisible()
+  await expect(page.getByText('Runtime settings are now sourced exclusively from the .env file.')).toBeVisible()
 })

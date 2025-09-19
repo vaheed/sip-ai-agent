@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type {
-  CallHistoryItem,
-  ConfigMap,
-  ConfigUpdateResponse,
-  DashboardEvent,
-  MetricsSnapshot,
-  StatusPayload,
-} from '../types'
+import type { CallHistoryItem, DashboardEvent, MetricsSnapshot, StatusPayload } from '../types'
 
 class UnauthorizedError extends Error {
   constructor(message = 'Authentication required') {
@@ -36,43 +29,16 @@ const fetchJson = async <T>(url: string): Promise<T> => {
   return response.json() as Promise<T>
 }
 
-const updateConfigRequest = async (payload: ConfigMap): Promise<ConfigUpdateResponse> => {
-  const response = await fetch('/api/update_config', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (response.status === 401) {
-    throw new UnauthorizedError()
-  }
-
-  const data = (await response
-    .json()
-    .catch(() => ({ success: response.ok }))) as ConfigUpdateResponse
-  if (!response.ok || !data.success) {
-    const detail = (data as { error?: string })?.error || response.statusText
-    throw new Error(detail || 'Failed to update configuration')
-  }
-  return data
-}
-
 export interface DashboardData {
   status: StatusPayload | null
   callHistory: CallHistoryItem[]
   logs: string[]
   metrics: MetricsSnapshot | null
-  config: ConfigMap
   loading: boolean
   authRequired: boolean
   error: string | null
   websocketState: 'connecting' | 'open' | 'retrying' | 'closed'
   refresh: () => Promise<void>
-  saveConfig: (values: ConfigMap) => Promise<ConfigUpdateResponse>
 }
 
 export const useDashboardData = (): DashboardData => {
@@ -80,7 +46,6 @@ export const useDashboardData = (): DashboardData => {
   const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null)
-  const [config, setConfig] = useState<ConfigMap>({})
   const [loading, setLoading] = useState(true)
   const [authRequired, setAuthRequired] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,21 +84,16 @@ export const useDashboardData = (): DashboardData => {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [statusPayload, historyPayload, logsPayload, configPayload, metricsPayload] =
-        await Promise.all([
-          fetchJson<StatusPayload>('/api/status'),
-          fetchJson<CallHistoryItem[]>('/api/call_history'),
-          fetchJson<{ logs: string[] }>('/api/logs'),
-          fetchJson<ConfigMap>('/api/config'),
-          fetchJson<MetricsSnapshot>('/metrics').catch(() => null),
-        ])
+      const [statusPayload, historyPayload, logsPayload, metricsPayload] = await Promise.all([
+        fetchJson<StatusPayload>('/api/status'),
+        fetchJson<CallHistoryItem[]>('/api/call_history'),
+        fetchJson<{ logs: string[] }>('/api/logs'),
+        fetchJson<MetricsSnapshot>('/metrics').catch(() => null),
+      ])
 
       setStatus(statusPayload)
       setCallHistory(historyPayload)
       setLogs(logsPayload.logs ?? [])
-      if (configPayload) {
-        setConfig(configPayload)
-      }
       if (metricsPayload) {
         setMetrics(metricsPayload)
       }
@@ -149,31 +109,6 @@ export const useDashboardData = (): DashboardData => {
       setLoading(false)
     }
   }, [handleUnauthorized])
-
-  const saveConfig = useCallback(
-    async (values: ConfigMap) => {
-      try {
-        const result = await updateConfigRequest(values)
-        if (result.reload?.status !== 'restarting') {
-          try {
-            await refresh()
-          } catch (refreshErr) {
-            if (handleUnauthorized(refreshErr)) {
-              throw refreshErr
-            }
-            console.warn('Failed to refresh dashboard after saving config', refreshErr)
-          }
-        }
-        return result
-      } catch (err) {
-        if (handleUnauthorized(err)) {
-          throw err
-        }
-        throw err instanceof Error ? err : new Error('Failed to update configuration')
-      }
-    },
-    [handleUnauthorized, refresh],
-  )
 
   useEffect(() => {
     void refresh()
@@ -276,12 +211,10 @@ export const useDashboardData = (): DashboardData => {
     callHistory: sortedHistory,
     logs,
     metrics,
-    config,
     loading,
     authRequired,
     error,
     websocketState,
     refresh,
-    saveConfig,
   }
 }

@@ -31,14 +31,14 @@
 ## Overview
 OpenAI SIP Voice Agent registers as a SIP endpoint via PJSIP, bridges audio between your PBX and OpenAI’s realtime or legacy voice APIs, and streams responses back to callers without leaving your telephony domain.
 
-A built-in FastAPI monitor and React/Tailwind dashboard authenticate administrators, expose configuration editing, and stream live call status, logs, and metrics over WebSockets.
+A built-in FastAPI monitor and React/Tailwind dashboard authenticate administrators, stream live call status, logs, and metrics over WebSockets, and surface runtime health while configuration stays in the `.env` file.
 
 Structured JSON logging with correlation IDs, safe reload tooling, and a strongly typed environment schema make the agent production-friendly from day one.
 
 ## Architecture at a glance
 - **sip-agent** – Asyncio PJSIP client that answers calls, bridges RTP frames into OpenAI’s realtime or legacy WebSocket APIs, and tracks token usage for observability.
 - **Monitor service** – FastAPI app that validates `.env` updates, streams status, exposes metrics, and coordinates safe reloads once active calls drain.
-- **Dashboard** – React + Tailwind UI served by Nginx, connected to the monitor via an authenticated WebSocket for status, logs, and configuration edits.
+- **Dashboard** – React + Tailwind UI served by Nginx, connected to the monitor via an authenticated WebSocket for status and logs while configuration lives in `.env`.
 - **Observability layer** – Structured logging with correlation IDs and an in-memory metrics collector that publishes JSON snapshots on `/metrics`.
 - **Container packaging** – Multi-stage Docker build compiles the dashboard, installs PJSIP bindings, and is orchestrated via `docker-compose` for both development and production deployments.
 
@@ -148,14 +148,14 @@ make install
 The helper downloads pjproject 2.12, builds shared libraries, and installs the `pjsua2` module—mirroring the container build sequence.
 
 ### Access the dashboard
-Browse to `http://<docker-host>:8080`, log in with `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` (defaults to `admin` / `admin`), and edit environment values through the configuration form. Save changes to trigger a safe reload once all active calls complete.
+Browse to `http://<docker-host>:8080` and log in with `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` (defaults to `admin` / `admin`). Update SIP, OpenAI, and feature settings directly in the `.env` file and restart the containers to apply changes.
 
 ## Monitoring & observability
 The dashboard summarises SIP registration state, active calls, token usage, realtime channel health, and live logs, with dark/light theme support and auto-refreshing WebSocket data feeds.
 
 The browser hook handles authentication failures, reconnect backoff, and incremental log streaming so operators can keep a single page open during deployments.
 
-Every configuration change is validated, persisted to `.env`, and routed through a safe-reload worker that waits for active calls to finish before respawning the process; reload progress is surfaced both via API responses and dashboard notifications.
+Configuration validation runs on startup and via the CLI helpers so invalid `.env` values surface immediately in logs and the dashboard health summaries.
 
 Structured JSON logs (with correlation IDs) and the metrics endpoint expose retry counters, call durations, token usage, and realtime WebSocket health. Pull `/metrics` in JSON for dashboards or quick `curl | jq` inspection during incidents.
 
