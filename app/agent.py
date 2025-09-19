@@ -12,6 +12,11 @@ from typing import Callable, Optional, TYPE_CHECKING
 import pjsua2 as pj
 
 try:
+    from pjsua2 import TimerEntry as _TimerEntryBase
+except ImportError:  # pragma: no cover - fallback when direct import fails
+    _TimerEntryBase = getattr(pj, "TimerEntry", object)
+
+try:
     from .observability import (
         correlation_scope,
         generate_correlation_id,
