@@ -8,7 +8,7 @@ import threading
 import base64
 import queue
 import contextlib
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 import pjsua2 as pj
 
 try:
@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 if TYPE_CHECKING:  # pragma: no cover - used for type checking only
     from app.config import Settings as AppSettings
+    from pjsua2 import TimerEntry as _TimerEntryBase
 
 try:
     from .config import ConfigurationError, get_settings
@@ -136,24 +137,11 @@ FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
 
 
-# ``pj.TimerEntry`` is not available in some minimal pjsua2 builds. Provide a
-# lightweight fallback so the timer logic can continue using threading.Timer.
-if hasattr(pj, "TimerEntry"):
-    _TimerEntryBase = pj.TimerEntry
-else:  # pragma: no cover - depends on runtime bindings
-    class _TimerEntryBase:
-        def __init__(self, *_, **__):
-            pass
-
-        def onTimeout(self):
-            """Compat shim matching the pjsua2 API."""
-            raise NotImplementedError
-
 
 class EndpointTimer(_TimerEntryBase):
-    """Wrapper around ``pj.TimerEntry`` with automatic fallback."""
+    """Timer that adapts to the available ``pjsua2`` bindings."""
 
-    def __init__(self, endpoint: pj.Endpoint, callback):
+    def __init__(self, endpoint: pj.Endpoint, callback: Callable[[], None]) -> None:
         super().__init__()
         self._endpoint = endpoint
         self._callback = callback
@@ -165,7 +153,7 @@ class EndpointTimer(_TimerEntryBase):
         if delay_seconds < 0:
             delay_seconds = 0
 
-        if hasattr(self._endpoint, 'utilTimerSchedule') and hasattr(pj, 'TimeVal'):
+        if hasattr(self._endpoint, "utilTimerSchedule") and hasattr(pj, "TimeVal"):
             try:
                 seconds = int(delay_seconds)
                 msec = int((delay_seconds - seconds) * 1000)
@@ -185,7 +173,7 @@ class EndpointTimer(_TimerEntryBase):
     def cancel(self) -> None:
         """Cancel the scheduled timer if active."""
         try:
-            if hasattr(self._endpoint, 'utilTimerCancel'):
+            if hasattr(self._endpoint, "utilTimerCancel"):
                 self._endpoint.utilTimerCancel(self)
         except Exception:
             pass
