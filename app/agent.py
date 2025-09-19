@@ -275,6 +275,15 @@ class EndpointTimer(_TimerEntryBase):
             except Exception:
                 pass
 
+        def _registration_succeeded(result: object) -> bool:
+            if callable(thread_is_registered):
+                try:
+                    if thread_is_registered():
+                        return True
+                except Exception:
+                    pass
+            return self._is_successful_thread_registration(result)
+
         thread_desc_cls = getattr(pj, "ThreadDesc", None)
         thread_cls = getattr(pj, "Thread", None)
         if thread_desc_cls is not None and thread_cls is not None:
@@ -299,14 +308,29 @@ class EndpointTimer(_TimerEntryBase):
                 except Exception:
                     return False
                 else:
-                    return self._is_successful_thread_registration(result)
+                    if _registration_succeeded(result):
+                        return True
+
+                # Some builds expose a two-argument overload where the thread
+                # instance is optional.
+                try:
+                    result = thread_register("endpoint_timer", self._thread_desc)
+                except TypeError:
+                    pass
+                except Exception:
+                    return False
+                else:
+                    if _registration_succeeded(result):
+                        return True
 
         try:
             result = thread_register("endpoint_timer")
+        except TypeError:
+            return False
         except Exception:
             return False
         else:
-            return self._is_successful_thread_registration(result)
+            return _registration_succeeded(result)
 
     @staticmethod
     def _is_successful_thread_registration(result: object) -> bool:
