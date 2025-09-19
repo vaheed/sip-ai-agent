@@ -40,8 +40,8 @@ export const CallHistoryTable = ({ history }: CallHistoryTableProps) => {
     <div className="overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/5">
       <div className="flex flex-col gap-3 border-b border-slate-200/70 bg-gradient-to-r from-white/70 to-white/30 px-6 py-5 dark:border-white/10 dark:from-white/10 dark:to-white/5 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Call history</p>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Completed and in-progress calls</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Call History</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Completed and in-progress calls</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Review connection outcomes or export the latest records.</p>
         </div>
         <a
