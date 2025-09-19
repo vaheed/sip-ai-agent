@@ -27,6 +27,32 @@ def test_validate_env_map_accepts_valid_values():
     assert settings.enable_sip is True
 
 
+def test_validate_env_map_handles_comma_separated_codecs():
+    values = {
+        "SIP_DOMAIN": "example.com",
+        "SIP_USER": "1001",
+        "SIP_PASS": "secret",
+        "OPENAI_API_KEY": "sk-test",
+        "AGENT_ID": "va_test",
+        "SIP_PREFERRED_CODECS": "PCMU,PCMA,opus",
+    }
+    settings = config.validate_env_map(values)
+    assert settings.sip_preferred_codecs == ("PCMU", "PCMA", "opus")
+
+
+def test_validate_env_map_handles_blank_codecs():
+    values = {
+        "SIP_DOMAIN": "example.com",
+        "SIP_USER": "1001",
+        "SIP_PASS": "secret",
+        "OPENAI_API_KEY": "sk-test",
+        "AGENT_ID": "va_test",
+        "SIP_PREFERRED_CODECS": "",
+    }
+    settings = config.validate_env_map(values)
+    assert settings.sip_preferred_codecs == ()
+
+
 def test_validate_env_map_raises_for_bad_values():
     with pytest.raises(config.ConfigurationError) as excinfo:
         config.validate_env_map({"SIP_TRANSPORT_PORT": "not-a-number"})

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from functools import lru_cache
@@ -11,6 +12,7 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple, cast
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import DotEnvSettingsSource, EnvSettingsSource
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BASE_DIR / ".env"
@@ -80,6 +82,45 @@ _ENV_EXAMPLE_TEMPLATE: List[Tuple[str | None, Dict[str, str]]] = [
 ]
 
 
+def _safe_json_loads(value: object) -> object:
+    """Return a permissive JSON loader used by :class:`Settings`.
+
+    The default loader used by :class:`BaseSettings` attempts to decode complex
+    fields using :func:`json.loads`. This fails when environment variables hold
+    plain strings (for example ``"PCMU,PCMA"``) because they are not valid JSON
+    payloads. Instead of raising :class:`json.JSONDecodeError`, we fall back to
+    returning the original value so that downstream validators can perform the
+    appropriate parsing logic.
+    """
+
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text:
+        return text
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return value
+
+
+class _SafeEnvMixin:
+    """Mixin that relaxes JSON decoding for environment settings sources."""
+
+    def decode_complex_value(self, field_name, field, value):  # type: ignore[override]
+        if isinstance(value, str):
+            return _safe_json_loads(value)
+        return value
+
+
+class _SafeEnvSettingsSource(_SafeEnvMixin, EnvSettingsSource):
+    """Environment source that tolerates non-JSON values for complex fields."""
+
+
+class _SafeDotEnvSettingsSource(_SafeEnvMixin, DotEnvSettingsSource):
+    """Dotenv source that tolerates non-JSON values for complex fields."""
+
+
 class ConfigurationError(RuntimeError):
     """Raised when the environment configuration cannot be validated."""
 
@@ -97,6 +138,22 @@ class Settings(BaseSettings):
         env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return (
+            init_settings,
+            _SafeEnvSettingsSource(settings_cls),
+            _SafeDotEnvSettingsSource(settings_cls),
+            file_secret_settings,
+        )
 
     sip_domain: str = Field(..., alias="SIP_DOMAIN", min_length=1)
     sip_user: str = Field(..., alias="SIP_USER", min_length=1)
