@@ -136,7 +136,21 @@ FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
 
 
-class EndpointTimer(pj.TimerEntry):
+# ``pj.TimerEntry`` is not available in some minimal pjsua2 builds. Provide a
+# lightweight fallback so the timer logic can continue using threading.Timer.
+if hasattr(pj, "TimerEntry"):
+    _TimerEntryBase = pj.TimerEntry
+else:  # pragma: no cover - depends on runtime bindings
+    class _TimerEntryBase:
+        def __init__(self, *_, **__):
+            pass
+
+        def onTimeout(self):
+            """Compat shim matching the pjsua2 API."""
+            raise NotImplementedError
+
+
+class EndpointTimer(_TimerEntryBase):
     """Wrapper around ``pj.TimerEntry`` with automatic fallback."""
 
     def __init__(self, endpoint: pj.Endpoint, callback):
