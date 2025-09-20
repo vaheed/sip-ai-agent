@@ -208,11 +208,13 @@ class Monitor:
         if payload:
             session_id = str(payload.get("session_id", "")) or None
             username = str(payload.get("username", ""))
-            expires_at = payload.get("expires_at")
             if not session_id or not username:
                 return None
+            expires_at_raw = cast(Optional[float | int | str], payload.get("expires_at"))
+            if expires_at_raw is None:
+                return None
             try:
-                expires_value = float(expires_at)
+                expires_value = float(expires_at_raw)
             except (TypeError, ValueError):
                 return None
             if expires_value < now:
