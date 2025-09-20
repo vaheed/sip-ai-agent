@@ -187,7 +187,7 @@ Defaults originate from `env.example` and are enforced via the `Settings` datacl
 | Key | Default | Description |
 | --- | --- | --- |
 | `SIP_TRANSPORT_PORT` | `5060` | Local UDP port for SIP signalling. |
-| `SIP_PREFERRED_CODECS` | `PCMU,PCMA,opus` | Priority-ordered codec list; unavailable codecs are ignored. |
+| `SIP_PREFERRED_CODECS` | `PCMU,PCMA,opus` | Priority-ordered codec list; friendly names (e.g. `PCMU`, `opus`) are normalised to the codec IDs reported by PJSIP and unavailable codecs are ignored. |
 | `SIP_JB_MIN` / `SIP_JB_MAX` / `SIP_JB_MAX_PRE` | `0` | Jitter buffer bounds to trade latency for resilience. |
 
 These values adjust PJSIP media configuration before registration.
