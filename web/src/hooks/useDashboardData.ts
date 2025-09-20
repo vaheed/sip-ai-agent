@@ -1,33 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CallHistoryItem, DashboardEvent, MetricsSnapshot, StatusPayload } from '../types'
-
-class UnauthorizedError extends Error {
-  constructor(message = 'Authentication required') {
-    super(message)
-    this.name = 'UnauthorizedError'
-  }
-}
-
-const fetchJson = async <T>(url: string): Promise<T> => {
-  const response = await fetch(url, {
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  })
-
-  if (response.status === 401) {
-    throw new UnauthorizedError()
-  }
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text || response.statusText)
-  }
-
-  return response.json() as Promise<T>
-}
+import { UnauthorizedError, fetchJson } from '../utils/http'
 
 export interface DashboardData {
   status: StatusPayload | null
