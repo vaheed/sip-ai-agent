@@ -8,7 +8,7 @@ import threading
 import base64
 import queue
 import contextlib
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
 import pjsua2 as pj
 
 try:
@@ -151,6 +151,122 @@ FRAME_DURATION = 20  # ms
 PCM_WIDTH = 2  # 16-bit PCM
 FRAME_BYTES = SAMPLE_RATE * FRAME_DURATION // 1000 * PCM_WIDTH
 MAX_PENDING_FRAMES = 50
+
+
+def _apply_codec_preferences(
+    endpoint: "pj.Endpoint", requested_codecs: Sequence[str]
+) -> None:
+    """Apply codec preferences to the provided endpoint with friendly matching."""
+
+    if not requested_codecs:
+        return
+
+    codec_enum = getattr(endpoint, "codecEnum2", None)
+    if not callable(codec_enum):
+        monitor.add_log(
+            "Endpoint does not expose codec enumeration",
+            level="warning",
+            event="codec_preference_unsupported",
+        )
+        return
+
+    try:
+        codec_infos = codec_enum()
+    except Exception as err:  # pragma: no cover - runtime defensive guard
+        monitor.add_log(
+            "Unable to enumerate codecs",
+            level="error",
+            event="codec_preference_error",
+            error=str(err),
+        )
+        return
+
+    available_exact: Dict[str, str] = {}
+    available_base: Dict[str, str] = {}
+    available_all: List[str] = []
+
+    for info in codec_infos or []:
+        codec_id = getattr(info, "codecId", None)
+        if not codec_id:
+            continue
+        codec_id_str = str(codec_id)
+        available_all.append(codec_id_str)
+        lower_id = codec_id_str.lower()
+        available_exact[lower_id] = codec_id_str
+        base_key = codec_id_str.split("/")[0].lower()
+        available_base.setdefault(base_key, codec_id_str)
+
+    if not available_all:
+        monitor.add_log(
+            "No codecs reported by endpoint; skipping preference assignment",
+            level="warning",
+            event="codec_preference_empty",
+        )
+        return
+
+    applied: List[Dict[str, object]] = []
+    applied_set = set()
+    unmatched: List[str] = []
+    priority = 240
+
+    for requested in requested_codecs:
+        requested_name = str(requested).strip()
+        if not requested_name:
+            continue
+
+        lookup_key = requested_name.lower()
+        matched_codec = available_exact.get(lookup_key)
+
+        if not matched_codec:
+            base_key = lookup_key.split("/")[0]
+            matched_codec = available_base.get(base_key)
+
+        if not matched_codec:
+            unmatched.append(requested_name)
+            continue
+
+        if matched_codec in applied_set:
+            continue
+
+        current_priority = priority
+        try:
+            endpoint.codecSetPriority(matched_codec, current_priority)
+        except Exception as err:  # pragma: no cover - depends on pj bindings
+            monitor.add_log(
+                "Unable to set codec preference",
+                level="error",
+                event="codec_preference_error",
+                requested_codec=requested_name,
+                codec_id=matched_codec,
+                error=str(err),
+            )
+            continue
+
+        applied.append(
+            {
+                "requested": requested_name,
+                "codec_id": matched_codec,
+                "priority": current_priority,
+            }
+        )
+        applied_set.add(matched_codec)
+        priority = max(priority - 10, 0)
+
+    if applied:
+        monitor.add_log(
+            "Applied SIP codec preferences",
+            event="codec_preference_applied",
+            applied_codecs=applied,
+        )
+
+    if unmatched:
+        monitor.add_log(
+            "Requested codecs not available",
+            level="warning",
+            event="codec_preference_missing",
+            requested_codecs=list(unmatched),
+            available_codecs=sorted(dict.fromkeys(available_all)),
+        )
 
 
 
@@ -1355,18 +1471,7 @@ def main():
 
     # Apply codec preferences
     if SIP_PREFERRED_CODECS:
-        try:
-            codec_infos = ep.codecEnum2()
-            available = {info.codecId: info for info in codec_infos}
-            priority = 240
-            for codec in SIP_PREFERRED_CODECS:
-                if codec in available:
-                    ep.codecSetPriority(codec, priority)
-                    priority = max(priority - 10, 0)
-                else:
-                    monitor.add_log(f"Requested codec {codec} not available")
-        except Exception as err:
-            monitor.add_log(f"Unable to set codec preferences: {err}")
+        _apply_codec_preferences(ep, SIP_PREFERRED_CODECS)
 
     # Create and register account
     acc_cfg = pj.AccountConfig()
