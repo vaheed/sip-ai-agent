@@ -158,3 +158,29 @@ def test_websocket_events_and_call_history_csv(
     lines = [line for line in csv_body.strip().splitlines() if line]
     assert lines[0] == "call_id,correlation_id,start,end,duration_seconds"
     assert lines[1].startswith("call-1,corr-1,")
+
+
+def test_session_cookie_survives_restart(client: TestClient, monitor: Monitor) -> None:
+    _login(client)
+    cookie_value = client.cookies.get(monitor.session_cookie)
+    assert cookie_value
+
+    with monitor._session_lock:  # type: ignore[attr-defined]
+        monitor._sessions.clear()  # type: ignore[attr-defined]
+
+    response = client.get("/api/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, dict)
+    assert payload.get("sip_registered") is False
+
+
+def test_tampered_session_cookie_rejected(client: TestClient, monitor: Monitor) -> None:
+    _login(client)
+    cookie_value = client.cookies.get(monitor.session_cookie)
+    assert cookie_value
+
+    client.cookies.set(monitor.session_cookie, f"{cookie_value}invalid")
+
+    response = client.get("/api/status")
+    assert response.status_code == 401

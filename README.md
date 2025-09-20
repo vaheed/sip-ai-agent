@@ -211,6 +211,7 @@ Monitor defaults can be overridden via environment variables:
 - `MONITOR_ADMIN_USERNAME` / `MONITOR_ADMIN_PASSWORD` – Admin credentials (default `admin` / `admin`).
 - `MONITOR_SESSION_COOKIE` – Cookie name for sessions (default `monitor_session`).
 - `MONITOR_SESSION_TTL` – Session lifetime in seconds (default 86400).
+- `MONITOR_SESSION_SECRET` – Optional secret used to sign dashboard sessions (defaults to a value derived from the credentials).
 
 ## Integration guides
 
