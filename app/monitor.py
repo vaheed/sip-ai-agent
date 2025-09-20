@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import csv
+import hashlib
 import io
 import hmac
 import json
@@ -109,6 +112,13 @@ class Monitor:
         )
         self.session_cookie = os.getenv("MONITOR_SESSION_COOKIE", "monitor_session")
         self.session_ttl = int(os.getenv("MONITOR_SESSION_TTL", "86400"))
+        secret_source = (
+            os.getenv("MONITOR_SESSION_SECRET")
+            or env_values.get("MONITOR_SESSION_SECRET")
+            or f"{self.admin_username}:{self.admin_password}"
+        )
+        secret_bytes = secret_source.encode("utf-8") if secret_source else b"monitor-session"
+        self._session_secret = secret_bytes
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._session_lock = threading.Lock()
 
@@ -138,31 +148,109 @@ class Monitor:
             and hmac.compare_digest(password, self.admin_password)
         )
 
+    def _encode_session_token(
+        self, session_id: str, username: str, expires_at: float
+    ) -> str:
+        payload = json.dumps(
+            {
+                "session_id": session_id,
+                "username": username,
+                "expires_at": expires_at,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        signature = hmac.new(
+            self._session_secret, payload, hashlib.sha256
+        ).digest()
+        token = base64.urlsafe_b64encode(payload + signature).decode("ascii")
+        return token.rstrip("=")
+
+    def _decode_session_token(self, token: str) -> Optional[Dict[str, Any]]:
+        if not token:
+            return None
+        padding = "=" * (-len(token) % 4)
+        try:
+            raw = base64.urlsafe_b64decode((token + padding).encode("ascii"))
+        except (ValueError, binascii.Error):
+            return None
+        digest_size = hashlib.sha256().digest_size
+        if len(raw) <= digest_size:
+            return None
+        payload_bytes = raw[:-digest_size]
+        signature = raw[-digest_size:]
+        expected = hmac.new(
+            self._session_secret, payload_bytes, hashlib.sha256
+        ).digest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        try:
+            payload = json.loads(payload_bytes.decode("utf-8"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return payload
+
     def _create_session(self, username: str) -> str:
         session_id = secrets.token_urlsafe(32)
         expires_at = time.time() + self.session_ttl
         with self._session_lock:
             self._sessions[session_id] = {"username": username, "expires_at": expires_at}
-        return session_id
+        return self._encode_session_token(session_id, username, expires_at)
 
-    def _get_session(self, session_id: Optional[str]) -> Optional[Dict[str, Any]]:
-        if not session_id:
+    def _get_session(self, session_token: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not session_token:
             return None
+        now = time.time()
+        payload = self._decode_session_token(session_token)
+        session_id = None
+        if payload:
+            session_id = str(payload.get("session_id", "")) or None
+            username = str(payload.get("username", ""))
+            expires_at = payload.get("expires_at")
+            if not session_id or not username:
+                return None
+            try:
+                expires_value = float(expires_at)
+            except (TypeError, ValueError):
+                return None
+            if expires_value < now:
+                return None
+            with self._session_lock:
+                data = self._sessions.get(session_id)
+                if data:
+                    if data["expires_at"] < now:
+                        self._sessions.pop(session_id, None)
+                        return None
+                    data["expires_at"] = now + self.session_ttl
+                    return data
+                refreshed = {"username": username, "expires_at": now + self.session_ttl}
+                self._sessions[session_id] = refreshed
+                return refreshed
+
+        # Fallback for unsigned legacy cookies
+        fallback_id = session_id or session_token
         with self._session_lock:
-            data = self._sessions.get(session_id)
+            data = self._sessions.get(fallback_id)
             if not data:
                 return None
-            if data["expires_at"] < time.time():
-                self._sessions.pop(session_id, None)
+            if data["expires_at"] < now:
+                self._sessions.pop(fallback_id, None)
                 return None
-            data["expires_at"] = time.time() + self.session_ttl
+            data["expires_at"] = now + self.session_ttl
             return data
 
-    def _clear_session(self, session_id: Optional[str]) -> None:
-        if not session_id:
+    def _clear_session(self, session_token: Optional[str]) -> None:
+        if not session_token:
             return
+        payload = self._decode_session_token(session_token)
+        session_id = None
+        if payload:
+            session_id = str(payload.get("session_id", "")) or None
+        target = session_id or session_token
         with self._session_lock:
-            self._sessions.pop(session_id, None)
+            self._sessions.pop(target, None)
 
     # ------------------------------------------------------------------
     # Broadcasting helpers
@@ -328,17 +416,24 @@ class Monitor:
                 next_path = str(form.get("next", next_path)) or "/dashboard"
 
             if self._verify_credentials(username, password):
-                session_id = self._create_session(username)
+                session_token = self._create_session(username)
                 response: Response
                 if content_type.startswith("application/json"):
                     response = JSONResponse({"success": True, "redirect": next_path})
                 else:
                     response = RedirectResponse(next_path, status_code=status.HTTP_303_SEE_OTHER)
+                forwarded_proto = request.headers.get("x-forwarded-proto")
+                if forwarded_proto:
+                    proto = forwarded_proto.split(",")[0].strip().lower()
+                else:
+                    proto = request.url.scheme
+                secure_cookie = proto == "https"
                 response.set_cookie(
                     self.session_cookie,
-                    session_id,
+                    session_token,
                     httponly=True,
                     max_age=self.session_ttl,
+                    secure=secure_cookie,
                     samesite="lax",
                 )
                 self.add_log("Administrator logged in", event="admin_login", username=username)
@@ -357,13 +452,13 @@ class Monitor:
 
         @self.app.post("/logout")
         async def logout(request: Request) -> Response:
-            session_id = request.cookies.get(self.session_cookie)
+            session_token = request.cookies.get(self.session_cookie)
             username = None
-            if session_id:
-                session = self._get_session(session_id)
+            if session_token:
+                session = self._get_session(session_token)
                 if session:
                     username = session.get("username")
-            self._clear_session(session_id)
+            self._clear_session(session_token)
             response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
             response.delete_cookie(self.session_cookie)
             if username:
