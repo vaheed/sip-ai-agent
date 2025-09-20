@@ -94,7 +94,7 @@ SIP_PASS=secret
 
 # OpenAI
 OPENAI_API_KEY=sk-...
-AGENT_ID=va_123456789
+AGENT_ID=pmpt_...
 
 # Feature toggles & realtime session
 ENABLE_SIP=true
@@ -104,6 +104,13 @@ OPENAI_MODEL=gpt-realtime
 OPENAI_VOICE=alloy
 OPENAI_TEMPERATURE=0.3
 SYSTEM_PROMPT=You are a helpful voice assistant.
+
+
+# Monitor authentication
+MONITOR_ADMIN_USERNAME=admin
+MONITOR_ADMIN_PASSWORD=admin
+MONITOR_SESSION_SECRET=change-me
+
 ```
 
 Core settings are validated on startup through a Pydantic schema, so missing or malformed values surface immediately in logs and the dashboard.
